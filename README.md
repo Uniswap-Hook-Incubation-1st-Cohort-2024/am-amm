@@ -15,5 +15,5 @@ Miro: [Miro board](https://miro.com/app/board/uXjVKDNc1nI=/)
 - [ ] function deposit
 - [ ] function withdraw() can't withdraw rent if the current manager
 - [ ] setBidPayload() -> setSwapFeeRate()
-- [ ] NoOp - to redistribute the swap fee to the current manager
+- [ ] NoOp - to redistribute the swap fee to the current manager (Lecky)
 - [ ] _burnBidToken() -> _chargeRent() - we charge with bidToken
