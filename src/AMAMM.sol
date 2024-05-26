@@ -22,11 +22,11 @@ contract AMAMM is BaseHook {
                 afterAddLiquidity: false,
                 beforeRemoveLiquidity: false,
                 afterRemoveLiquidity: false,
-                beforeSwap: true, // Update swap fee
+                beforeSwap: true, // Override how swaps are done
                 afterSwap: false,
                 beforeDonate: false,
                 afterDonate: false,
-                beforeSwapReturnDelta: true, // Redistribute swap fee
+                beforeSwapReturnDelta: true, // Allow beforeSwap to return a custom delta
                 afterSwapReturnDelta: false,
                 afterAddLiquidityReturnDelta: false,
                 afterRemoveLiquidityReturnDelta: false
