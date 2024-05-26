@@ -1,66 +1,19 @@
-## Foundry
+# am-amm
+Paper: [AM-AMM](https://arxiv.org/abs/2403.03367)
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+Reference:
+[Biddog](https://github.com/Bunniapp/biddog/tree/main)
 
-Foundry consists of:
+Miro: [Miro board](https://miro.com/app/board/uXjVKDNc1nI=/)
 
--   **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
--   **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
--   **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
--   **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+# TODO
 
-## Documentation
-
-https://book.getfoundry.sh/
-
-## Usage
-
-### Build
-
-```shell
-$ forge build
-```
-
-### Test
-
-```shell
-$ forge test
-```
-
-### Format
-
-```shell
-$ forge fmt
-```
-
-### Gas Snapshots
-
-```shell
-$ forge snapshot
-```
-
-### Anvil
-
-```shell
-$ anvil
-```
-
-### Deploy
-
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
-
-### Cast
-
-```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+- [ ] Convert topBid, nextBid just to use Epochs
+- [ ] function bid(epoch) epoch != getEpoch() setSwapFeeRate()
+- [ ] function cancel(epoch) epoch != getEpoch()
+- [ ] create balances[address]
+- [ ] function deposit
+- [ ] function withdraw() can't withdraw rent if the current manager
+- [ ] setBidPayload() -> setSwapFeeRate()
+- [ ] NoOp - to redistribute the swap fee to the current manager
+- [ ] _burnBidToken() -> _chargeRent() - we charge with bidToken
