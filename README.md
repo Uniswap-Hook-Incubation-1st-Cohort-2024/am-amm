@@ -1,5 +1,5 @@
 # am-amm
-[AM-AMM](https://arxiv.org/abs/2403.03367)
+Paper: [AM-AMM](https://arxiv.org/abs/2403.03367)
 
 Reference:
 [Biddog](https://github.com/Bunniapp/biddog/tree/main)
