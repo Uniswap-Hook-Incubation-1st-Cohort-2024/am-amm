@@ -8,11 +8,11 @@ import {Hooks} from "v4-core/libraries/Hooks.sol";
 import {PoolId} from "v4-core/types/PoolId.sol";
 import {CurrencyLibrary, Currency} from "v4-core/types/Currency.sol";
 import {LibMulticaller} from "../lib/multicaller/src/LibMulticaller.sol";
-import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
-import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
+import {SafeCastLib} from "../lib/solady/src/utils/SafeCastLib.sol";
+import {FixedPointMathLib} from "../lib/solady/src/utils/FixedPointMathLib.sol";
 
 contract AMAMM is BaseHook, IAmAmm {
-    constructor(IPoolManager poolManager) BaseHook(poolManager) {}
+    constructor() BaseHook(poolManager) {}
 
     /// -----------------------------------------------------------------------
     /// UNIV4 HOOK usage
@@ -22,7 +22,7 @@ contract AMAMM is BaseHook, IAmAmm {
         return Hooks.Permissions({
             beforeInitialize: false,
             afterInitialize: false,
-            beforeAddLiquidity: false,
+            beforeAddLiquidity: true, // Don't allow adding liquidity normally
             afterAddLiquidity: false,
             beforeRemoveLiquidity: false,
             afterRemoveLiquidity: false,
@@ -66,10 +66,10 @@ contract AMAMM is BaseHook, IAmAmm {
 
     mapping(PoolId id => uint40) internal _lastUpdatedEpoch;
     mapping(Currency currency => uint256) internal _totalFees;
-    mapping(uint256 => mapping(uint40 => Bid)) public poolEpochManager;
+    mapping(PoolId id => mapping(uint40 => Bid)) public poolEpochManager;
     mapping(address manager => mapping(PoolId id => uint256)) internal _refunds;
     mapping(address manager => mapping(Currency currency => uint256)) internal _fees;
-    mapping(uint256 => mapping(uint40 => mapping(address => Bid))) public poolEpochBids;
+    mapping(PoolId id => mapping(uint40 => mapping(address => Bid))) public poolEpochBids;
 
     /// -----------------------------------------------------------------------
     /// Bidder actions
@@ -94,7 +94,7 @@ contract AMAMM is BaseHook, IAmAmm {
         // - deposit needs to be a multiple of rent
         // - payload needs to be valid
         if (
-            bidder == address(0) || rent <= poolEpochManager[id][_epoch].mulWad(MIN_BID_MULTIPLIER(id))
+            bidder == address(0) || rent <= poolEpochManager[id][_epoch].rent.mulWad(MIN_BID_MULTIPLIER(id))
                 || deposit < rent * K(id) || deposit % rent != 0 || !_payloadIsValid(id, payload)
         ) {
             revert AmAmm__InvalidBid();
@@ -121,7 +121,7 @@ contract AMAMM is BaseHook, IAmAmm {
     }
 
     /// @inheritdoc IAmAmm
-    function cancelBid(PoolId id, address bidder, uint40 _epoch) external virtual override returns (uint256 refund) {
+    function cancelBid(PoolId id, address bidder, uint40 _epoch) external virtual override {
         /// -----------------------------------------------------------------------
         /// Validation
         /// -----------------------------------------------------------------------
@@ -148,12 +148,7 @@ contract AMAMM is BaseHook, IAmAmm {
     }
 
     /// @inheritdoc IAmAmm
-    function withdrawBid(PoolId id, address bidder, uint40 _epoch, uint256 _amount)
-        external
-        virtual
-        override
-        returns (uint256 refund)
-    {
+    function withdrawBid(PoolId id, address bidder, uint40 _epoch, uint128 _amount) external virtual override {
         /// -----------------------------------------------------------------------
         /// Validation
         /// -----------------------------------------------------------------------
@@ -197,7 +192,7 @@ contract AMAMM is BaseHook, IAmAmm {
     /// -----------------------------------------------------------------------
 
     /// @dev Charges rent
-    function _updateEpochBids(PoolId id, uint40 _currentEpoch) internal virtual {
+    function _updateEpochBids() internal virtual {
         //TODO
     }
 
@@ -221,24 +216,23 @@ contract AMAMM is BaseHook, IAmAmm {
         //TODO
     }
 
-    /// @inheritdoc IAmAmm
-    //This is expensive but will have to be done if we want to allow bidders to remove their bid
-    function getHighestDepositBid(PoolId poolId, uint40 epoch) internal view returns (Bid memory) {
-        uint128 highestDeposit = 0;
-        Bid memory highestBid;
-        bool hasBids = false;
+    /// @notice Returns the highest deposit bid for a given pool and epoch.
+    /// @param id The identifier for the pool.
+    /// @param _epoch The epoch for which to find the highest bid.
+    /// @return highestBid The bid with the highest deposit.
+    function getHighestDepositBid(PoolId id, uint40 _epoch) public view returns (Bid memory highestBid) {
+        // highestBid = Bid({bidder: address(0), payload: 0, rent: 0, deposit: 0});
 
-        address[] memory bidders = poolEpochBids[poolId][epoch];
+        // // Iterate through all bids for the given pool and epoch
+        // for (uint256 i = 0; i < poolEpochBids[id][_epoch].length; i++) {
+        //     Bid memory currentBid = poolEpochBids[id][_epoch][i];
+        //     if (currentBid.deposit > highestBid.deposit) {
+        //         highestBid = currentBid;
+        //     }
+        // }
 
-        for (uint256 i = 0; i < bidders.length; i++) {
-            Bid memory _bid = poolEpochBids[poolId][epoch][bidders[i]];
-            if (_bid.deposit > highestDeposit) {
-                highestDeposit = _bid.deposit;
-                highestBid = _bid;
-                hasBids = true;
-            }
-        }
-        return highestBid;
+        // return highestBid;
+        //TODO FIX
     }
 
     /// @notice returns current epoch.
