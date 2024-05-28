@@ -7,6 +7,9 @@ import {IAmAmm} from "./interfaces/IAmAmm.sol";
 import {Hooks} from "v4-core/libraries/Hooks.sol";
 import {PoolId} from "v4-core/types/PoolId.sol";
 import {CurrencyLibrary, Currency} from "v4-core/types/Currency.sol";
+import {LibMulticaller} from "../lib/multicaller/src/LibMulticaller.sol";
+import {SafeCastLib} from "solady/utils/SafeCastLib.sol";
+import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 
 contract AMAMM is BaseHook, IAmAmm {
     constructor(IPoolManager poolManager) BaseHook(poolManager) {}
@@ -38,8 +41,8 @@ contract AMAMM is BaseHook, IAmAmm {
     /// Library usage
     /// -----------------------------------------------------------------------
 
-    // using SafeCastLib for *;
-    // using FixedPointMathLib for *;
+    using SafeCastLib for *;
+    using FixedPointMathLib for *;
 
     /// -----------------------------------------------------------------------
     /// Constants
@@ -91,15 +94,15 @@ contract AMAMM is BaseHook, IAmAmm {
         // - deposit needs to be a multiple of rent
         // - payload needs to be valid
         if (
-            bidder == address(0) || rent <= poolEpochManager[poolId][_epoch].mulWad(MIN_BID_MULTIPLIER(id))
+            bidder == address(0) || rent <= poolEpochManager[id][_epoch].mulWad(MIN_BID_MULTIPLIER(id))
                 || deposit < rent * K(id) || deposit % rent != 0 || !_payloadIsValid(id, payload)
         ) {
             revert AmAmm__InvalidBid();
         }
 
         // Check if the bid already exists
-        Bid existingBid = poolEpochBids[id][_epoch][bidder];
-        Bid newBid = Bid({bidder: msgSender, payload: payload, rent: rent, deposit: deposit});
+        Bid memory existingBid = poolEpochBids[id][_epoch][bidder];
+        Bid memory newBid = Bid({bidder: msgSender, payload: payload, rent: rent, deposit: deposit});
 
         if (existingBid.bidder != address(0)) {
             // If the bid exists, update the deposit
@@ -126,7 +129,7 @@ contract AMAMM is BaseHook, IAmAmm {
         address msgSender = LibMulticaller.senderOrSigner();
 
         if (
-            !_amAmmEnabled(id) || poolEpochBids[id][epoch][bidder].deposit != 0
+            !_amAmmEnabled(id) || poolEpochBids[id][_epoch][bidder].deposit != 0
                 || _epoch <= _getEpoch(id, block.timestamp)
         ) {
             revert AmAmm__InvalidBid();
@@ -136,10 +139,10 @@ contract AMAMM is BaseHook, IAmAmm {
         /// State updates
         /// -----------------------------------------------------------------------
 
-        delete poolEpochBids[poolId][epoch][bidder];
+        delete poolEpochBids[id][_epoch][bidder];
 
-        Bid topBid = getHighestDepositBid(id, _epoch);
-        poolEpochManager[id][_epoch] = newBid;
+        Bid memory topBid = getHighestDepositBid(id, _epoch);
+        poolEpochManager[id][_epoch] = topBid;
 
         _updateEpochBids();
     }
@@ -158,19 +161,19 @@ contract AMAMM is BaseHook, IAmAmm {
         address msgSender = LibMulticaller.senderOrSigner();
 
         if (
-            !_amAmmEnabled(id) || poolEpochBids[id][epoch][bidder].deposit != 0
+            !_amAmmEnabled(id) || poolEpochBids[id][_epoch][bidder].deposit != 0
                 || _epoch <= _getEpoch(id, block.timestamp)
         ) {
             revert AmAmm__InvalidBid();
         }
 
         // ensure amount is a multiple of rent
-        if (amount % topBid.rent != 0) {
+        if (_amount % poolEpochBids[id][_epoch][bidder].rent != 0) {
             revert AmAmm__InvalidDepositAmount();
         }
 
         // require D_top / R_top >= K
-        if ((topBid.deposit - amount) / topBid.rent < K(id)) {
+        if ((poolEpochBids[id][_epoch][bidder].deposit - _amount) / poolEpochBids[id][_epoch][bidder].rent < K(id)) {
             revert AmAmm__BidLocked();
         }
 
@@ -178,14 +181,12 @@ contract AMAMM is BaseHook, IAmAmm {
         /// State updates
         /// -----------------------------------------------------------------------
 
-        Bid newBid = Bid({bidder: msgSender, payload: payload, rent: rent, deposit: deposit});
-        Bid existingBid = poolEpochBids[id][_epoch][bidder];
-
-        existingBid.deposit = poolEpochBids[id][_epoch][bidder].deposit - amount;
+        Bid memory existingBid = poolEpochBids[id][_epoch][bidder];
+        existingBid.deposit = poolEpochBids[id][_epoch][bidder].deposit - _amount;
 
         if (poolEpochManager[id][_epoch].bidder == bidder) {
-            Bid topBid = getHighestDepositBid(id, _epoch);
-            poolEpochManager[id][_epoch] = newBid;
+            Bid memory topBid = getHighestDepositBid(id, _epoch);
+            poolEpochManager[id][_epoch] = topBid;
         }
 
         _updateEpochBids();
@@ -210,6 +211,16 @@ contract AMAMM is BaseHook, IAmAmm {
         //TODO
     }
 
+    /// @dev Validates a bid payload, e.g. ensure the swap fee is below a certain threshold
+    function _payloadIsValid(PoolId id, bytes7 payload) internal view virtual returns (bool) {
+        //TODO
+    }
+
+    /// @dev Returns whether the am-AMM is enabled for a given pool
+    function _amAmmEnabled(PoolId id) internal view virtual returns (bool) {
+        //TODO
+    }
+
     /// @inheritdoc IAmAmm
     //This is expensive but will have to be done if we want to allow bidders to remove their bid
     function getHighestDepositBid(PoolId poolId, uint40 epoch) internal view returns (Bid memory) {
@@ -217,7 +228,7 @@ contract AMAMM is BaseHook, IAmAmm {
         Bid memory highestBid;
         bool hasBids = false;
 
-        address[] memory bidders = poolEpochBidders[poolId][epoch];
+        address[] memory bidders = poolEpochBids[poolId][epoch];
 
         for (uint256 i = 0; i < bidders.length; i++) {
             Bid memory _bid = poolEpochBids[poolId][epoch][bidders[i]];

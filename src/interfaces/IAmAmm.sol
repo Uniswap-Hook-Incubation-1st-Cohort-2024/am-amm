@@ -33,11 +33,11 @@ interface IAmAmm {
 
     /// @notice Places a bid to become the manager of a pool
     /// @param id The pool id
-    /// @param manager The address of the manager
+    /// @param bidder The address of the bidder
     /// @param payload The payload specifying what parameters the manager wants, e.g. swap fee
     /// @param rent The rent per epoch
     /// @param deposit The deposit amount, must be a multiple of rent and cover rent for >=K epochs
-    function bid(PoolId id, address manager, bytes7 payload, uint128 rent, uint128 deposit) external;
+    function bid(PoolId id, address bidder, bytes7 payload, uint128 rent, uint128 deposit, uint40 _epoch) external;
 
     /// @notice Adds deposit to the top bid. Only callable by topBids[id].manager.
     /// @param id The pool id
