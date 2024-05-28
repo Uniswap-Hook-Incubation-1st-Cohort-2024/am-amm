@@ -129,7 +129,7 @@ abstract contract BaseHook is IHooks {
         PoolKey calldata,
         IPoolManager.SwapParams calldata,
         bytes calldata
-    ) external virtual returns (bytes4, BeforeSwapDelta) {
+    ) external virtual returns (bytes4, BeforeSwapDelta, uint24) {
         revert HookNotImplemented();
     }
 
