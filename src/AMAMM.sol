@@ -28,8 +28,8 @@ contract AMAMM is IAmAmm {
     /// Library usage
     /// -----------------------------------------------------------------------
 
-    // using SafeCastLib for *;
-    // using FixedPointMathLib for *;
+    using SafeCastLib for *;
+    using FixedPointMathLib for *;
 
     /// -----------------------------------------------------------------------
     /// Constants
@@ -136,19 +136,19 @@ contract AMAMM is IAmAmm {
         address msgSender = LibMulticaller.senderOrSigner();
 
         if (
-            !_amAmmEnabled(id) || poolEpochBids[id][epoch][bidder].deposit != 0
+            !_amAmmEnabled(id) || poolEpochBids[id][_epoch][bidder].deposit != 0
                 || _epoch <= _getEpoch(id, block.timestamp)
         ) {
             revert AmAmm__InvalidBid();
         }
 
         // ensure amount is a multiple of rent
-        if (amount % topBid.rent != 0) {
+        if (_amount % poolEpochBids[id][_epoch][bidder].rent != 0) {
             revert AmAmm__InvalidDepositAmount();
         }
 
         // require D_top / R_top >= K
-        if ((topBid.deposit - amount) / topBid.rent < K(id)) {
+        if ((poolEpochBids[id][_epoch][bidder].deposit - _amount) / poolEpochBids[id][_epoch][bidder].rent < K(id)) {
             revert AmAmm__BidLocked();
         }
 
@@ -156,14 +156,12 @@ contract AMAMM is IAmAmm {
         /// State updates
         /// -----------------------------------------------------------------------
 
-        Bid newBid = Bid({bidder: msgSender, payload: payload, rent: rent, deposit: deposit});
-        Bid existingBid = poolEpochBids[id][_epoch][bidder];
-
-        existingBid.deposit = poolEpochBids[id][_epoch][bidder].deposit - amount;
+        Bid memory existingBid = poolEpochBids[id][_epoch][bidder];
+        existingBid.deposit = poolEpochBids[id][_epoch][bidder].deposit - _amount;
 
         if (poolEpochManager[id][_epoch].bidder == bidder) {
-            Bid topBid = getHighestDepositBid(id, _epoch);
-            poolEpochManager[id][_epoch] = newBid;
+            Bid memory topBid = getHighestDepositBid(id, _epoch);
+            poolEpochManager[id][_epoch] = topBid;
         }
 
         _updateEpochBids();
