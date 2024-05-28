@@ -28,8 +28,8 @@ contract AMAMM is IAmAmm {
     /// Library usage
     /// -----------------------------------------------------------------------
 
-    using SafeCastLib for *;
-    using FixedPointMathLib for *;
+    // using SafeCastLib for *;
+    // using FixedPointMathLib for *;
 
     /// -----------------------------------------------------------------------
     /// Constants
@@ -122,6 +122,53 @@ contract AMAMM is IAmAmm {
         return _amount;
     }
 
+    /// @inheritdoc IAmAmm
+    function withdrawBid(PoolId id, address bidder, uint40 _epoch, uint256 _amount)
+        external
+        virtual
+        override
+        returns (uint256 refund)
+    {
+        /// -----------------------------------------------------------------------
+        /// Validation
+        /// -----------------------------------------------------------------------
+
+        address msgSender = LibMulticaller.senderOrSigner();
+
+        if (
+            !_amAmmEnabled(id) || poolEpochBids[id][epoch][bidder].deposit != 0
+                || _epoch <= _getEpoch(id, block.timestamp)
+        ) {
+            revert AmAmm__InvalidBid();
+        }
+
+        // ensure amount is a multiple of rent
+        if (amount % topBid.rent != 0) {
+            revert AmAmm__InvalidDepositAmount();
+        }
+
+        // require D_top / R_top >= K
+        if ((topBid.deposit - amount) / topBid.rent < K(id)) {
+            revert AmAmm__BidLocked();
+        }
+
+        /// -----------------------------------------------------------------------
+        /// State updates
+        /// -----------------------------------------------------------------------
+
+        Bid newBid = Bid({bidder: msgSender, payload: payload, rent: rent, deposit: deposit});
+        Bid existingBid = poolEpochBids[id][_epoch][bidder];
+
+        existingBid.deposit = poolEpochBids[id][_epoch][bidder].deposit - amount;
+
+        if (poolEpochManager[id][_epoch].bidder == bidder) {
+            Bid topBid = getHighestDepositBid(id, _epoch);
+            poolEpochManager[id][_epoch] = newBid;
+        }
+
+        _updateEpochBids();
+    }
+
     /// -----------------------------------------------------------------------
     /// Internal helpers
     /// -----------------------------------------------------------------------
@@ -155,5 +202,12 @@ contract AMAMM is IAmAmm {
     /// @param _epoch current epoch
     function _getDeposit(PoolId id, uint40 _epoch) public view returns (uint256) {
         return uint256(poolEpochManager[id][_epoch].rent * uint256(K(id)));
+    }
+
+    /// @notice returns current epoch.
+    /// @param id pool id
+    /// @param timestamp current timestamp
+    function _getEpoch(PoolId id, uint256 timestamp) internal view returns (uint40) {
+        return uint40(timestamp / EPOCH_SIZE(id));
     }
 }
