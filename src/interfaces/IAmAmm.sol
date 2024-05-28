@@ -2,8 +2,8 @@
 
 pragma solidity ^0.8.0;
 
-import {PoolId} from "v4-core/src/types/PoolId.sol";
-import {Currency} from "v4-core/src/types/Currency.sol";
+import {PoolId} from "v4-core/types/PoolId.sol";
+import {CurrencyLibrary, Currency} from "v4-core/types/Currency.sol";
 
 interface IAmAmm {
     error AmAmm__BidLocked();
@@ -23,13 +23,6 @@ interface IAmAmm {
     event ClaimRefund(PoolId indexed id, address indexed manager, address indexed recipient, uint256 refund);
     event ClaimFees(Currency indexed currency, address indexed manager, address indexed recipient, uint256 fees);
     event SetBidPayload(PoolId indexed id, address indexed manager, bytes7 payload, bool topBid);
-
-    struct Epoch {
-        address bidder;
-        bytes7 payload; // payload specifying what parames the manager wants, e.g. swap fee
-        uint128 rent; // rent per hour
-        uint128 deposit; // rent deposit amount
-    }
 
     struct Bid {
         address bidder;
