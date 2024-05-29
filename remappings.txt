@@ -10,5 +10,5 @@ openzeppelin-contracts/=lib/v4-periphery/lib/openzeppelin-contracts/
 openzeppelin/=lib/v4-periphery/lib/openzeppelin-contracts/contracts/
 solmate/=lib/v4-periphery/lib/solmate/src/
 v4-core/=lib/v4-core/src/
-v4-core/test=lib/v4-core/src/test
+v4-core-test=lib/v4-core/test/
 v4-periphery/=lib/v4-periphery/contracts/

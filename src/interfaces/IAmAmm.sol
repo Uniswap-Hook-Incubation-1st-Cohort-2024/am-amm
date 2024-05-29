@@ -41,16 +41,14 @@ interface IAmAmm {
 
     /// @notice Withdraws from the deposit of the top bid. Only callable by topBids[id].manager. Reverts if D_top / R_top < K.
     /// @param id The pool id
-    /// @param bidder The address of the recipient
     /// @param _epoch The address of the recipient
-    function cancelBid(PoolId id, address bidder, uint40 _epoch) external;
+    function cancelBid(PoolId id, uint40 _epoch) external;
 
     /// @notice Withdraws from the deposit of the top bid. Only callable by topBids[id].manager. Reverts if D_top / R_top < K.
     /// @param id The pool id
-    /// @param bidder The address of the recipient
     /// @param _epoch The address of the recipient
     /// @param _amount The amount to withdraw, must be a multiple of rent and leave D_top / R_top >= K
-    function withdrawBid(PoolId id, address bidder, uint40 _epoch, uint128 _amount) external;
+    function withdrawBid(PoolId id, uint40 _epoch, uint128 _amount) external;
 
     /// @notice Claims the refundable deposit of a pool owed to msg.sender.
     /// @param id The pool id

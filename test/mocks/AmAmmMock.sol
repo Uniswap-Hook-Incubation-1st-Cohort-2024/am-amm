@@ -4,6 +4,7 @@ pragma solidity ^0.8.19;
 import {PoolId} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {Hooks} from "v4-core/libraries/Hooks.sol";
+import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 
 import "./ERC20Mock.sol";
 import {AMAMM} from "../../src/AmAmm.sol";
@@ -18,9 +19,7 @@ contract AmAmmMock is AMAMM {
     mapping(PoolId id => bool) public enabled;
     mapping(PoolId id => uint24) public maxSwapFee;
 
-    constructor(ERC20Mock _bidToken, ERC20Mock _feeToken0, ERC20Mock _feeToken1)
-        AMAMM() // Passing the required parameter to the base constructor
-    {
+    constructor(ERC20Mock _bidToken, ERC20Mock _feeToken0, ERC20Mock _feeToken1) {
         bidToken = _bidToken;
         feeToken0 = _feeToken0;
         feeToken1 = _feeToken1;
@@ -46,5 +45,9 @@ contract AmAmmMock is AMAMM {
         // address manager = _topBids[id].manager;
         // feeToken1.mint(address(this), amount);
         // _accrueFees(manager, Currency.wrap(address(feeToken1)), amount);
+    }
+
+    function _amAmmEnabled(PoolId id) internal view returns (bool) {
+        return true;
     }
 }
