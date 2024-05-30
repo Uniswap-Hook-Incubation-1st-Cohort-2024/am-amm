@@ -36,49 +36,58 @@ contract AmAmmTest is Test {
 
     function test_bid() external {
         vm.prank(user0);
-        amAmm.bid(POOL_0, address(user0), _swapFeeToPayload(0.01e6), 1e18, K * 1e18, 0);
+        amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 1e18, K * 1e18, 0);
 
         assertEq(amAmm.getManager(POOL_0, 0).deposit, K * 1e18, "Bid Promoted to Top Bid");
 
         vm.prank(user1);
-        amAmm.bid(POOL_0, address(user1), _swapFeeToPayload(0.01e6), 10e18, K * 10e18, 0);
+        amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 10e18, K * 10e18, 0);
 
         assertEq(amAmm.getManager(POOL_0, 0).bidder, address(user1));
 
         vm.prank(user2);
         vm.expectRevert();
-        amAmm.bid(POOL_0, address(user2), _swapFeeToPayload(0.01e6), 1e18, K * 1e18, 0);
+        amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 1e18, K * 1e18, 0);
     }
 
-    function test_bid_cancel() external {
+    function test_bid_refund() external {
         vm.prank(user0);
-        amAmm.bid(POOL_0, address(user0), _swapFeeToPayload(0.01e6), 1e18, K * 1e18, 0);
+        amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 1e18, K * 1e18, 0);
         vm.prank(user0);
-        amAmm.bid(POOL_0, address(user0), _swapFeeToPayload(0.01e6), 1e18, K * 1e18, 1);
+        amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 1e18, K * 1e18, 1);
 
         assertEq(amAmm.getManager(POOL_0, 0).deposit, K * 1e18, "Bid Promoted to Top Bid");
 
         vm.prank(user1);
-        amAmm.bid(POOL_0, address(user1), _swapFeeToPayload(0.01e6), 10e18, K * 10e18, 0);
+        amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 10e18, K * 10e18, 1);
 
-        assertEq(amAmm.getBid(POOL_0, 1, user0).bidder, address(user0));
+        assertEq(amAmm.getManager(POOL_0, 1).bidder, address(user1));
+
+        console.log(amAmm._getEpoch(POOL_0, block.timestamp), block.timestamp);
+        skip(10800); //Enter Epoch 3
+
+        console.log(amAmm._getEpoch(POOL_0, block.timestamp), block.timestamp);
+
+        assertEq(amAmm._getEpoch(POOL_0, block.timestamp), 3, "Entered Epoch 3");
 
         vm.prank(user0);
-        amAmm.cancelBid(POOL_0, 1);
+        amAmm.claimRefund(POOL_0, 1);
 
-        assertEq(amAmm.getBid(POOL_0, 1, user0).bidder, address(0));
+        vm.prank(user1);
+        vm.expectRevert();
+        amAmm.claimRefund(POOL_0, 1);
     }
 
     function test_bid_withdraw() external {
         vm.prank(user0);
-        amAmm.bid(POOL_0, address(user0), _swapFeeToPayload(0.01e6), 1e18, K * 1e18, 0);
+        amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 1e18, K * 1e18, 0);
         vm.prank(user0);
-        amAmm.bid(POOL_0, address(user0), _swapFeeToPayload(0.01e6), 1e18, K * 2e18, 1);
+        amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 1e18, K * 2e18, 1);
 
         vm.prank(user0);
-        amAmm.withdrawBid(POOL_0, 1, 1e18);
+        amAmm.withdrawFromBid(POOL_0, 1, 1e18);
 
-        assertEq(amAmm.getBid(POOL_0, 1, user0).deposit, (K * 2e18) - 1e18);
+        assertEq(amAmm.getManager(POOL_0, 1).deposit, (K * 2e18) - 1e18);
     }
 
     function _getEpoch(uint256 timestamp) internal pure returns (uint40) {
