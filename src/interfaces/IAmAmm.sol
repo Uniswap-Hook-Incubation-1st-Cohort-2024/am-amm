@@ -28,7 +28,6 @@ interface IAmAmm {
         address bidder;
         bytes7 payload; // payload specifying what parames the manager wants, e.g. swap fee
         uint128 rent; // rent per hour
-        uint128 deposit; // rent deposit amount
     }
 
     /// @notice Places a bid to become the manager of a pool

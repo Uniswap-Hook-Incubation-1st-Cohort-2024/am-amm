@@ -91,12 +91,9 @@ contract AMAMM is IAmAmm {
             revert AmAmm__InvalidBid();
         }
 
-        // Check if the bid already exists
-        Bid memory newBid = Bid({bidder: msgSender, payload: payload, rent: rent, deposit: deposit});
-
-        if (poolEpochManager[id][_epoch].deposit < deposit) {
-            _userRefunds[poolEpochManager[id][_epoch].bidder] += poolEpochManager[id][_epoch].deposit;
-            poolEpochManager[id][_epoch] = Bid({bidder: msgSender, payload: payload, rent: rent, deposit: deposit});
+        if (_getDeposit(id, _epoch) < deposit) {
+            _userRefunds[poolEpochManager[id][_epoch].bidder] += _getDeposit(id, _epoch);
+            poolEpochManager[id][_epoch] = Bid({bidder: msgSender, payload: payload, rent: rent});
             _userDeposits[msgSender] += deposit;
         }
 
@@ -124,15 +121,14 @@ contract AMAMM is IAmAmm {
         }
 
         // require D_top / R_top >= K
-        if ((poolEpochManager[id][_epoch].deposit - _amount) / poolEpochManager[id][_epoch].rent < K(id)) {
+        if ((_getDeposit(id, _epoch) - _amount) / poolEpochManager[id][_epoch].rent < K(id)) {
             revert AmAmm__BidLocked();
         }
 
         /// -----------------------------------------------------------------------
         /// State updates
         /// -----------------------------------------------------------------------
-
-        poolEpochManager[id][_epoch].deposit -= _amount;
+        poolEpochManager[id][_epoch].rent = uint128((_getDeposit(id, _epoch) - _amount) / K(id));
         _userDeposits[msgSender] -= _amount;
 
         _updateEpochBids();
@@ -193,5 +189,12 @@ contract AMAMM is IAmAmm {
     /// @param timestamp current timestamp
     function _getEpoch(PoolId id, uint256 timestamp) public view returns (uint40) {
         return uint40(timestamp / EPOCH_SIZE(id));
+    }
+
+    /// @notice returns current epoch.
+    /// @param id pool id
+    /// @param _epoch current epoch
+    function _getDeposit(PoolId id, uint40 _epoch) public view returns (uint256) {
+        return uint256(poolEpochManager[id][_epoch].rent * uint256(K(id)));
     }
 }
