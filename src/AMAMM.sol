@@ -56,8 +56,7 @@ contract AMAMM is IAmAmm {
     mapping(PoolId id => mapping(uint40 => Bid)) public poolEpochManager;
     mapping(address manager => mapping(PoolId id => uint256)) internal _refunds;
     mapping(address manager => mapping(Currency currency => uint256)) internal _fees;
-    mapping(address deposits => uint256) public _userDeposits;
-    mapping(address refunds => uint256) public _userRefunds;
+    mapping(address deposits => uint256) public _userBalance;
 
     /// -----------------------------------------------------------------------
     /// Getter actions
@@ -92,57 +91,24 @@ contract AMAMM is IAmAmm {
         }
 
         if (_getDeposit(id, _epoch) < deposit) {
-            _userRefunds[poolEpochManager[id][_epoch].bidder] += _getDeposit(id, _epoch);
+            _userBalance[poolEpochManager[id][_epoch].bidder] += _getDeposit(id, _epoch); //Increase user balance of losing bidder
             poolEpochManager[id][_epoch] = Bid({bidder: msgSender, payload: payload, rent: rent});
-            _userDeposits[msgSender] += deposit;
+        } else {
+            _userBalance[msgSender] += deposit; //Increase balance if bidder is not top bidder
         }
 
         _updateEpochBids();
     }
 
     /// @inheritdoc IAmAmm
-    function withdrawFromBid(PoolId id, uint40 _epoch, uint128 _amount) external virtual override {
+    function withdrawBalance(PoolId id, uint128 _amount) external virtual override returns (uint128) {
         /// -----------------------------------------------------------------------
         /// Validation
         /// -----------------------------------------------------------------------
 
         address msgSender = LibMulticaller.senderOrSigner();
 
-        if (
-            !_amAmmEnabled(id) || poolEpochManager[id][_epoch].bidder != msgSender
-                || _epoch <= _getEpoch(id, block.timestamp)
-        ) {
-            revert AmAmm__InvalidBid();
-        }
-
-        // ensure amount is a multiple of rent
-        if (_amount % poolEpochManager[id][_epoch].rent != 0) {
-            revert AmAmm__InvalidDepositAmount();
-        }
-
-        // require D_top / R_top >= K
-        if ((_getDeposit(id, _epoch) - _amount) / poolEpochManager[id][_epoch].rent < K(id)) {
-            revert AmAmm__BidLocked();
-        }
-
-        /// -----------------------------------------------------------------------
-        /// State updates
-        /// -----------------------------------------------------------------------
-        poolEpochManager[id][_epoch].rent = uint128((_getDeposit(id, _epoch) - _amount) / K(id));
-        _userDeposits[msgSender] -= _amount;
-
-        _updateEpochBids();
-    }
-
-    /// @inheritdoc IAmAmm
-    function claimRefund(PoolId id, uint40 _epoch) external virtual override returns (uint256 refund) {
-        /// -----------------------------------------------------------------------
-        /// Validation
-        /// -----------------------------------------------------------------------
-
-        address msgSender = LibMulticaller.senderOrSigner();
-
-        if (!_amAmmEnabled(id) || _userRefunds[msgSender] == 0 || _epoch >= _getEpoch(id, block.timestamp)) {
+        if (!_amAmmEnabled(id) || _userBalance[msgSender] < _amount) {
             revert AmAmm__InvalidBid();
         }
 
@@ -150,12 +116,11 @@ contract AMAMM is IAmAmm {
         /// State updates
         /// -----------------------------------------------------------------------
 
-        uint256 refundAmount = _userRefunds[msgSender];
-        _userDeposits[msgSender] -= refundAmount;
-        _userRefunds[msgSender] = 0;
+        _userBalance[msgSender] -= _amount;
 
         _updateEpochBids();
-        return refundAmount;
+
+        return _amount;
     }
 
     /// -----------------------------------------------------------------------
@@ -164,11 +129,6 @@ contract AMAMM is IAmAmm {
 
     /// @dev Charges rent
     function _updateEpochBids() internal virtual {
-        //TODO
-    }
-
-    /// @inheritdoc IAmAmm
-    function claimFees(Currency currency, address recipient) external returns (uint256 fees) {
         //TODO
     }
 
