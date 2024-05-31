@@ -34,11 +34,12 @@ contract AmAmmTest is Test {
         return bytes7(bytes3(swapFee));
     }
 
+    //Test to check if lower bid can be promoted
     function test_bid() external {
         vm.prank(user0);
         amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 1e18, K * 1e18, 0);
 
-        assertEq(amAmm.getManager(POOL_0, 0).deposit, K * 1e18, "Bid Promoted to Top Bid");
+        assertEq(amAmm._getDeposit(POOL_0, 0), K * 1e18, "Bid Promoted to Top Bid");
 
         vm.prank(user1);
         amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 10e18, K * 10e18, 0);
@@ -50,44 +51,53 @@ contract AmAmmTest is Test {
         amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 1e18, K * 1e18, 0);
     }
 
-    function test_bid_refund() external {
+    //Test to check if lower bid can be promoted
+    function test_withdrawFutureBid() external {
         vm.prank(user0);
         amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 1e18, K * 1e18, 0);
-        vm.prank(user0);
-        amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 1e18, K * 1e18, 1);
 
-        assertEq(amAmm.getManager(POOL_0, 0).deposit, K * 1e18, "Bid Promoted to Top Bid");
+        assertEq(amAmm._getDeposit(POOL_0, 0), K * 1e18, "Bid Promoted to Top Bid");
 
         vm.prank(user1);
-        amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 10e18, K * 10e18, 1);
+        amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 10e18, K * 10e18, 10); // Future Bid
 
-        assertEq(amAmm.getManager(POOL_0, 1).bidder, address(user1));
-
-        console.log(amAmm._getEpoch(POOL_0, block.timestamp), block.timestamp);
-        skip(10800); //Enter Epoch 3
-
-        console.log(amAmm._getEpoch(POOL_0, block.timestamp), block.timestamp);
-
-        assertEq(amAmm._getEpoch(POOL_0, block.timestamp), 3, "Entered Epoch 3");
-
-        vm.prank(user0);
-        amAmm.claimRefund(POOL_0, 1);
+        assertEq(amAmm.getManager(POOL_0, 10).bidder, address(user1)); //Confirm they are manager of future bid
 
         vm.prank(user1);
         vm.expectRevert();
-        amAmm.claimRefund(POOL_0, 1);
+        amAmm.withdrawBalance(POOL_0, K * 10e18);
+    }
+
+    // Test if lower bids can be refunded
+    function test_bid_refund() external {
+        vm.prank(user0);
+        amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 1e18, K * 1e18, 1);
+
+        vm.prank(user1);
+        amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 10e18, K * 10e18, 1); // New Bid Winner
+
+        assertEq(amAmm._getDeposit(POOL_0, 1), K * 10e18, "Bid Promoted to Top Bid");
+
+        skip(10800); //Enter Epoch 3
+
+        assertEq(amAmm._userBalance(user0), 1e18 * K, "Ensure User bid is still available to withdraw");
+
+        vm.prank(user0); // user0 should have 1e18* k balance and should be able to withdraw
+        amAmm.withdrawBalance(POOL_0, 1e18 * K);
+
+        assertEq(amAmm._userBalance(user0), 0, "Zero Balance after withdrawing");
     }
 
     function test_bid_withdraw() external {
         vm.prank(user0);
         amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 1e18, K * 1e18, 0);
         vm.prank(user0);
-        amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 1e18, K * 2e18, 1);
+        amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 2e18, K * 2e18, 0);
 
         vm.prank(user0);
-        amAmm.withdrawFromBid(POOL_0, 1, 1e18);
+        amAmm.withdrawBalance(POOL_0, K * 1e18);
 
-        assertEq(amAmm.getManager(POOL_0, 1).deposit, (K * 2e18) - 1e18);
+        assertEq(amAmm._userBalance(user0), 0, "Zero Balance after withdrawing");
     }
 
     function _getEpoch(uint256 timestamp) internal pure returns (uint40) {

@@ -52,10 +52,10 @@ contract AMAMM is IAmAmm {
     /// -----------------------------------------------------------------------
 
     mapping(PoolId id => uint40) internal _lastUpdatedEpoch;
+    mapping(address deposits => uint256) public _userBalance;
     mapping(Currency currency => uint256) internal _totalFees;
     mapping(PoolId id => mapping(uint40 => Bid)) public poolEpochManager;
     mapping(address manager => mapping(Currency currency => uint256)) internal _fees;
-    mapping(address deposits => uint256) public _userBalance;
 
     /// -----------------------------------------------------------------------
     /// Getter actions
@@ -96,7 +96,7 @@ contract AMAMM is IAmAmm {
             _userBalance[msgSender] += deposit; //Increase balance if bidder is not top bidder
         }
 
-        _updateEpochBids();
+        _updateEpochBids(id);
     }
 
     /// @inheritdoc IAmAmm
@@ -115,56 +115,13 @@ contract AMAMM is IAmAmm {
         /// State updates
         /// -----------------------------------------------------------------------
 
-        _userBalance[msgSender] -= _amount;
+        unchecked {
+            _userBalance[msgSender] -= _amount;
 
-        _updateEpochBids();
+            _updateEpochBids(id);
+        }
 
         return _amount;
-    }
-
-    /// @inheritdoc IAmAmm
-    function withdrawBid(PoolId id, address bidder, uint40 _epoch, uint256 _amount)
-        external
-        virtual
-        override
-        returns (uint256 refund)
-    {
-        /// -----------------------------------------------------------------------
-        /// Validation
-        /// -----------------------------------------------------------------------
-
-        address msgSender = LibMulticaller.senderOrSigner();
-
-        if (
-            !_amAmmEnabled(id) || poolEpochBids[id][_epoch][bidder].deposit != 0
-                || _epoch <= _getEpoch(id, block.timestamp)
-        ) {
-            revert AmAmm__InvalidBid();
-        }
-
-        // ensure amount is a multiple of rent
-        if (_amount % poolEpochBids[id][_epoch][bidder].rent != 0) {
-            revert AmAmm__InvalidDepositAmount();
-        }
-
-        // require D_top / R_top >= K
-        if ((poolEpochBids[id][_epoch][bidder].deposit - _amount) / poolEpochBids[id][_epoch][bidder].rent < K(id)) {
-            revert AmAmm__BidLocked();
-        }
-
-        /// -----------------------------------------------------------------------
-        /// State updates
-        /// -----------------------------------------------------------------------
-
-        Bid memory existingBid = poolEpochBids[id][_epoch][bidder];
-        existingBid.deposit = poolEpochBids[id][_epoch][bidder].deposit - _amount;
-
-        if (poolEpochManager[id][_epoch].bidder == bidder) {
-            Bid memory topBid = getHighestDepositBid(id, _epoch);
-            poolEpochManager[id][_epoch] = topBid;
-        }
-
-        _updateEpochBids();
     }
 
     /// -----------------------------------------------------------------------
@@ -172,8 +129,22 @@ contract AMAMM is IAmAmm {
     /// -----------------------------------------------------------------------
 
     /// @dev Charges rent
-    function _updateEpochBids() internal virtual {
-        //TODO
+    function _updateEpochBids(PoolId id) internal virtual {
+        uint40 currentEpoch = _getEpoch(id, block.timestamp);
+
+        // Early return if the pool has already been updated in this epoch
+        if (_lastUpdatedEpoch[id] == currentEpoch) {
+            return;
+        }
+
+        // Loop through each epoch that has passed
+        for (uint40 epoch = _lastUpdatedEpoch[id] + 1; epoch <= currentEpoch; epoch++) {
+            Bid storage bid = poolEpochManager[id][epoch];
+            _userBalance[bid.bidder] -= bid.rent;
+        }
+
+        // Update the last updated epoch for the pool
+        _lastUpdatedEpoch[id] = currentEpoch;
     }
 
     /// @dev Validates a bid payload, e.g. ensure the swap fee is below a certain threshold
@@ -190,13 +161,6 @@ contract AMAMM is IAmAmm {
 
     /// @notice returns current epoch.
     /// @param id pool id
-    /// @param timestamp current timestamp
-    function _getEpoch(PoolId id, uint256 timestamp) public view returns (uint40) {
-        return uint40(timestamp / EPOCH_SIZE(id));
-    }
-
-    /// @notice returns current epoch.
-    /// @param id pool id
     /// @param _epoch current epoch
     function _getDeposit(PoolId id, uint40 _epoch) public view returns (uint256) {
         return uint256(poolEpochManager[id][_epoch].rent * uint256(K(id)));
@@ -205,7 +169,9 @@ contract AMAMM is IAmAmm {
     /// @notice returns current epoch.
     /// @param id pool id
     /// @param timestamp current timestamp
-    function _getEpoch(PoolId id, uint256 timestamp) internal view returns (uint40) {
+    function _getEpoch(PoolId id, uint256 timestamp) public view returns (uint40) {
         return uint40(timestamp / EPOCH_SIZE(id));
     }
+
+    function claimFees(Currency currency, address recipient) external override returns (uint256 fees) {}
 }
