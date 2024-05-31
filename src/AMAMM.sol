@@ -54,7 +54,6 @@ contract AMAMM is IAmAmm {
     mapping(PoolId id => uint40) internal _lastUpdatedEpoch;
     mapping(Currency currency => uint256) internal _totalFees;
     mapping(PoolId id => mapping(uint40 => Bid)) public poolEpochManager;
-    mapping(address manager => mapping(PoolId id => uint256)) internal _refunds;
     mapping(address manager => mapping(Currency currency => uint256)) internal _fees;
     mapping(address deposits => uint256) public _userBalance;
 
