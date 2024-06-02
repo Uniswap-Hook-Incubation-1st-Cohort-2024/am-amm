@@ -3,6 +3,7 @@ pragma solidity ^0.8.0;
 
 // import {BaseHook} from "v4-periphery/BaseHook.sol";
 import {Test, console} from "forge-std/Test.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import {BaseHook} from "./forks/BaseHook.sol";
 import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
@@ -56,6 +57,7 @@ contract AMAMM is IAmAmm {
     mapping(Currency currency => uint256) internal _totalFees;
     mapping(PoolId id => mapping(uint40 => Bid)) public poolEpochManager;
     mapping(address manager => mapping(Currency currency => uint256)) internal _fees;
+    mapping(PoolId id => address) internal _bidToken;
 
     /// -----------------------------------------------------------------------
     /// Getter actions
@@ -76,8 +78,7 @@ contract AMAMM is IAmAmm {
 
         address msgSender = LibMulticaller.senderOrSigner();
 
-        _userBalance[msgSender] += _getDeposit(id, _epoch);
-
+        depositToken(id, msgSender, _epoch);
         // ensure bid is valid
         // - manager can't be zero address
         // - bid needs to be greater than the next bid by >10%
@@ -110,6 +111,14 @@ contract AMAMM is IAmAmm {
         _updateLastUpdatedEpoch(id, _epoch);
     }
 
+    function depositToken(PoolId id, address depositor, uint40 _epoch) internal returns (uint256) {
+        uint256 amount = _getDeposit(id, _epoch);
+        IERC20(_bidToken[id]).transferFrom(depositor, address(this), amount);
+
+        _userBalance[depositor] += amount;
+        return amount;
+    }
+
     /// @inheritdoc IAmAmm
     function withdrawBalance(PoolId id, uint128 _amount) external virtual override returns (uint128) {
         /// -----------------------------------------------------------------------
@@ -129,6 +138,7 @@ contract AMAMM is IAmAmm {
         unchecked {
             _userBalance[msgSender] -= _amount;
         }
+        IERC20(_bidToken[id]).transferFrom(address(this), msgSender, _amount);
 
         return _amount;
     }
