@@ -76,6 +76,8 @@ contract AMAMM is IAmAmm {
 
         address msgSender = LibMulticaller.senderOrSigner();
 
+        _userBalance[msgSender] += _getDeposit(id, _epoch);
+
         // ensure bid is valid
         // - manager can't be zero address
         // - bid needs to be greater than the next bid by >10%
@@ -89,14 +91,23 @@ contract AMAMM is IAmAmm {
             revert AmAmm__InvalidBid();
         }
 
-        if (_getDeposit(id, _epoch) < deposit) {
-            _userBalance[poolEpochManager[id][_epoch].bidder] += _getDeposit(id, _epoch); //Increase user balance of losing bidder
-            poolEpochManager[id][_epoch] = Bid({bidder: msgSender, payload: payload, rent: rent});
+        uint256 prevWinner = _getDeposit(id, _epoch);
+
+        if (prevWinner == 0 && _getEpoch(id, block.timestamp) - _lastUpdatedEpoch[id] < K(id)) {
+            if (poolEpochManager[id][_lastUpdatedEpoch[id]].rent < rent && _findUpperManager(id, _epoch) == 0) {
+                //Userp Top Bidder
+                _userBalance[poolEpochManager[id][_epoch].bidder] += _getRefund(id, _lastUpdatedEpoch[id], _epoch); //Refund losing bidder
+
+                poolEpochManager[id][_epoch] = Bid({bidder: msgSender, payload: payload, rent: rent});
+
+                _userBalance[msgSender] -= _getDeposit(id, _epoch);
+            }
         } else {
-            _userBalance[msgSender] += deposit; //Increase balance if bidder is not top bidder
+            poolEpochManager[id][_epoch] = Bid({bidder: msgSender, payload: payload, rent: rent});
+            _userBalance[msgSender] -= _getDeposit(id, _epoch);
         }
 
-        _updateEpochBids(id);
+        _updateLastUpdatedEpoch(id, _epoch);
     }
 
     /// @inheritdoc IAmAmm
@@ -117,8 +128,6 @@ contract AMAMM is IAmAmm {
 
         unchecked {
             _userBalance[msgSender] -= _amount;
-
-            _updateEpochBids(id);
         }
 
         return _amount;
@@ -127,25 +136,6 @@ contract AMAMM is IAmAmm {
     /// -----------------------------------------------------------------------
     /// Internal helpers
     /// -----------------------------------------------------------------------
-
-    /// @dev Charges rent
-    function _updateEpochBids(PoolId id) internal virtual {
-        uint40 currentEpoch = _getEpoch(id, block.timestamp);
-
-        // Early return if the pool has already been updated in this epoch
-        if (_lastUpdatedEpoch[id] == currentEpoch) {
-            return;
-        }
-
-        // Loop through each epoch that has passed
-        for (uint40 epoch = _lastUpdatedEpoch[id] + 1; epoch <= currentEpoch; epoch++) {
-            Bid storage bid = poolEpochManager[id][epoch];
-            _userBalance[bid.bidder] -= bid.rent;
-        }
-
-        // Update the last updated epoch for the pool
-        _lastUpdatedEpoch[id] = currentEpoch;
-    }
 
     /// @dev Validates a bid payload, e.g. ensure the swap fee is below a certain threshold
     function _payloadIsValid(PoolId id, bytes7 payload) internal view virtual returns (bool) {
@@ -171,6 +161,31 @@ contract AMAMM is IAmAmm {
     /// @param timestamp current timestamp
     function _getEpoch(PoolId id, uint256 timestamp) public view returns (uint40) {
         return uint40(timestamp / EPOCH_SIZE(id));
+    }
+
+    function _getRefund(PoolId id, uint40 _epoch, uint40 _targetEpoch) internal view returns (uint256) {
+        return poolEpochManager[id][_epoch].rent * (_epoch + K(id) - _targetEpoch);
+    }
+
+    function _updateLastUpdatedEpoch(PoolId id, uint40 _epoch) internal returns (uint40) {
+        if (_lastUpdatedEpoch[id] > _getEpoch(id, block.timestamp)) {
+            if (_epoch < _lastUpdatedEpoch[id]) {
+                _lastUpdatedEpoch[id] = _epoch;
+                return _epoch;
+            } else {
+                return _lastUpdatedEpoch[id];
+            }
+        }
+        return _lastUpdatedEpoch[id];
+    }
+
+    function _findUpperManager(PoolId id, uint40 _epoch) internal view returns (uint40) {
+        for (uint40 e = _epoch; e <= _epoch + K(id); e++) {
+            if (poolEpochManager[id][e].rent > 0) {
+                return e;
+            }
+        }
+        return 0;
     }
 
     function claimFees(Currency currency, address recipient) external override returns (uint256 fees) {}
