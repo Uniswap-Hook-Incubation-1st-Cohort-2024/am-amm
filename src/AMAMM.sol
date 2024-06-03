@@ -36,15 +36,15 @@ contract AMAMM is IAmAmm {
     /// Constants
     /// -----------------------------------------------------------------------
 
-    function K(PoolId) internal view virtual returns (uint40) {
+    function K(PoolId) public view virtual returns (uint40) {
         return 24;
     }
 
-    function EPOCH_SIZE(PoolId) internal view virtual returns (uint256) {
+    function EPOCH_SIZE(PoolId) public view virtual returns (uint256) {
         return 1 hours;
     }
 
-    function MIN_BID_MULTIPLIER(PoolId) internal view virtual returns (uint256) {
+    function MIN_BID_MULTIPLIER(PoolId) public view virtual returns (uint256) {
         return 1.1e18;
     }
 
@@ -68,7 +68,8 @@ contract AMAMM is IAmAmm {
     }
 
     function getManager(PoolId id, uint40 epoch) public view returns (Bid memory) {
-        if (_getEpoch(id, epoch) - _lastUpdatedEpoch[id] <= K(id)) {
+        //@dev getEpoch(id, epoch) shoudl always be smaller than lastupdated
+        if (_lastUpdatedEpoch[id] - _getEpoch(id, epoch) <= K(id)) {
             return poolEpochManager[id][_lastUpdatedEpoch[id]];
         } else {
             return poolEpochManager[id][epoch];
@@ -85,21 +86,24 @@ contract AMAMM is IAmAmm {
         /// -----------------------------------------------------------------------
 
         address msgSender = LibMulticaller.senderOrSigner();
+        if (_epoch > _getEpoch(id, block.timestamp) + K(id)) {
+            revert AmAmm__BidOutOfBounds();
+        }
 
-        uint128 deposit = depositToken(id, msgSender, _epoch);
+        uint128 deposit = depositToken(id, msgSender, rent);
 
         if (
-            _epoch > _getEpoch(id, block.timestamp)
+            _epoch <= _getEpoch(id, block.timestamp)
                 || rent <= poolEpochManager[id][_epoch].rent.mulWad(MIN_BID_MULTIPLIER(id)) || deposit < rent * K(id)
-                || deposit % rent != 0 || !_payloadIsValid(id, payload)
+                || !_payloadIsValid(id, payload)
         ) {
             revert AmAmm__InvalidBid();
         }
 
-        Bid memory prevWinner = getManager(id, _epoch);
+        if (_lastUpdatedEpoch[id] > _getEpoch(id, block.timestamp)) {
+            Bid memory prevWinner = getManager(id, _epoch);
 
-        if (prevWinner.rent != 0) {
-            if (prevWinner.rent < rent) {
+            if (prevWinner.rent < rent && prevWinner.rent != 0) {
                 //Userp Top Bidder and only allow bidder to own N epochs instead of K epochs (N < K)
                 _userBalance[poolEpochManager[id][_epoch].bidder] += _getRefund(id, _lastUpdatedEpoch[id], _epoch); //Refund losing bidder
 
@@ -109,18 +113,23 @@ contract AMAMM is IAmAmm {
             }
         } else {
             poolEpochManager[id][_epoch] = Bid({bidder: msgSender, payload: payload, rent: rent});
+
             _userBalance[msgSender] -= _getDeposit(id, _epoch);
         }
 
         _updateLastUpdatedEpoch(id, _epoch);
     }
 
-    function depositToken(PoolId id, address depositor, uint40 _epoch) internal returns (uint128) {
-        uint128 amount = uint128(_getDeposit(id, _epoch));
+    function depositToken(PoolId id, address depositor, uint128 rent) internal returns (uint128) {
+        uint128 amount = uint128(rent * K(id));
+
         if (_userBalance[depositor] >= amount) {
             uint128 remainderAmount = uint128(_userBalance[depositor] - amount);
-            IERC20(_bidToken[id]).transferFrom(depositor, address(this), remainderAmount);
+            _pullBidToken(id, depositor, remainderAmount);
             _userBalance[depositor] += remainderAmount;
+        } else {
+            _pullBidToken(id, depositor, amount);
+            _userBalance[depositor] += amount;
         }
 
         return amount;
@@ -128,24 +137,16 @@ contract AMAMM is IAmAmm {
 
     /// @inheritdoc IAmAmm
     function withdrawBalance(PoolId id, uint128 _amount) external virtual override returns (uint128) {
-        /// -----------------------------------------------------------------------
-        /// Validation
-        /// -----------------------------------------------------------------------
-
         address msgSender = LibMulticaller.senderOrSigner();
 
         if (!_amAmmEnabled(id) || _userBalance[msgSender] < _amount) {
             revert AmAmm__InvalidBid();
         }
 
-        /// -----------------------------------------------------------------------
-        /// State updates
-        /// -----------------------------------------------------------------------
-
         unchecked {
             _userBalance[msgSender] -= _amount;
         }
-        IERC20(_bidToken[id]).transferFrom(address(this), msgSender, _amount);
+        _pushBidToken(id, msgSender, _amount);
 
         return _amount;
     }
@@ -153,18 +154,6 @@ contract AMAMM is IAmAmm {
     /// -----------------------------------------------------------------------
     /// Internal helpers
     /// -----------------------------------------------------------------------
-
-    /// @dev Validates a bid payload, e.g. ensure the swap fee is below a certain threshold
-    function _payloadIsValid(PoolId id, bytes7 payload) internal view virtual returns (bool) {
-        //TODO
-        return true;
-    }
-
-    /// @dev Returns whether the am-AMM is enabled for a given pool
-    function _amAmmEnabled(PoolId id) internal view virtual returns (bool) {
-        //TODO
-        return true;
-    }
 
     /// @notice returns current epoch.
     /// @param id pool id
@@ -185,8 +174,6 @@ contract AMAMM is IAmAmm {
     }
 
     function _updateLastUpdatedEpoch(PoolId id, uint40 _epoch) internal returns (uint40) {
-        //We know that _epoch - currEpoch <= k
-
         return _lastUpdatedEpoch[id] = _epoch;
     }
 
@@ -199,5 +186,21 @@ contract AMAMM is IAmAmm {
         return 0;
     }
 
+    /// @dev Validates a bid payload, e.g. ensure the swap fee is below a certain threshold
+    function _payloadIsValid(PoolId id, bytes7 payload) internal view virtual returns (bool) {
+        //TODO
+        return false;
+    }
+
+    /// @dev Returns whether the am-AMM is enabled for a given pool
+    function _amAmmEnabled(PoolId id) internal view virtual returns (bool) {
+        //TODO
+        return true;
+    }
+
     function claimFees(Currency currency, address recipient) external override returns (uint256 fees) {}
+
+    function _pullBidToken(PoolId id, address from, uint256 amount) internal virtual {}
+
+    function _pushBidToken(PoolId id, address to, uint256 amount) internal virtual {}
 }

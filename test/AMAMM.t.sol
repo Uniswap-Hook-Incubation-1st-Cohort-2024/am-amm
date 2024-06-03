@@ -13,6 +13,7 @@ import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
 import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 import {SafeCast} from "v4-core/libraries/SafeCast.sol";
 import {AMAMM} from "../src/AMAMM.sol";
+import {AmAmmMock} from "./mocks/AmAmmMock.sol";
 
 contract AmAmmTest is Test {
     PoolId constant POOL_0 = PoolId.wrap(bytes32(0));
@@ -24,81 +25,136 @@ contract AmAmmTest is Test {
     uint128 internal constant K = 24; // 24 windows (hours)
     uint256 internal constant EPOCH_SIZE = 1 hours;
     uint256 internal constant MIN_BID_MULTIPLIER = 1.1e18; // 10%
-    AMAMM amAmm;
+    AmAmmMock amAmm;
 
     function setUp() public {
-        amAmm = new AMAMM();
+        amAmm = new AmAmmMock(new ERC20Mock(), new ERC20Mock(), new ERC20Mock());
+        amAmm.bidToken().approve(address(amAmm), type(uint256).max);
+        amAmm.setEnabled(POOL_0, true);
+
+        amAmm.setMaxSwapFee(POOL_0, 0.1e6);
     }
 
     function _swapFeeToPayload(uint24 swapFee) internal pure returns (bytes7) {
         return bytes7(bytes3(swapFee));
     }
 
+    //Test get_epoch
+    function test_get_epoch() external {
+        assertEq(
+            amAmm._getEpoch(POOL_0, block.timestamp),
+            uint40(block.timestamp / amAmm.EPOCH_SIZE(POOL_0)),
+            "Get Epoch returns Correct Epoch"
+        );
+    }
+
+    //Test to check if you can bid on current epoch
+    function test_bid_current_epoch() external {
+        vm.prank(user0);
+        vm.expectRevert();
+        amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 1e18, 0);
+    }
+
     //Test to check if lower bid can be promoted
-    // function test_bid() external {
-    //     vm.prank(user0);
-    //     amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 1e18, K * 1e18, 0);
+    function test_bid() external {
+        amAmm.bidToken().mint(address(user0), K * 100e18);
+        amAmm.bidToken().mint(address(user1), K * 100e18);
+        amAmm.bidToken().mint(address(user2), K * 100e18);
 
-    //     assertEq(amAmm._getDeposit(POOL_0, 0), K * 1e18, "Bid Promoted to Top Bid");
+        vm.startPrank(user0);
+        amAmm.bidToken().approve(address(amAmm), K * 100e18);
+        amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 1e18, 1);
+        vm.stopPrank();
 
-    //     vm.prank(user1);
-    //     amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 10e18, K * 10e18, 0);
+        assertEq(amAmm._getDeposit(POOL_0, 1), K * 1e18, "Bid Promoted to Top Bid");
 
-    //     assertEq(amAmm.getManager(POOL_0, 0).bidder, address(user1));
+        vm.startPrank(user1);
+        amAmm.bidToken().approve(address(amAmm), type(uint256).max);
+        amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 10e18, 1);
+        vm.stopPrank();
 
-    //     vm.prank(user2);
-    //     vm.expectRevert();
-    //     amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 1e18, K * 1e18, 0);
-    // }
+        assertEq(amAmm.getManager(POOL_0, 0).bidder, address(user1));
 
-    // //Test to check if lower bid can be promoted
-    // function test_withdrawFutureBid() external {
-    //     vm.prank(user0);
-    //     amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 1e18, K * 1e18, 0);
+        vm.startPrank(user2);
+        amAmm.bidToken().approve(address(amAmm), type(uint256).max);
+        vm.expectRevert();
+        amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 1e18, 1);
+        vm.stopPrank();
+    }
 
-    //     assertEq(amAmm._getDeposit(POOL_0, 0), K * 1e18, "Bid Promoted to Top Bid");
+    //Test to check if lower bid can be promoted
+    function test_withdrawFutureBid() external {
+        amAmm.bidToken().mint(address(user0), K * 100e18);
+        amAmm.bidToken().mint(address(user1), K * 100e18);
+        amAmm.bidToken().mint(address(user2), K * 100e18);
 
-    //     vm.prank(user1);
-    //     amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 10e18, K * 10e18, 10); // Future Bid
+        vm.startPrank(user0);
+        amAmm.bidToken().approve(address(amAmm), K * 1e18);
+        amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 1e18, 1);
+        vm.stopPrank();
 
-    //     assertEq(amAmm.getManager(POOL_0, 10).bidder, address(user1)); //Confirm they are manager of future bid
+        assertEq(amAmm._getDeposit(POOL_0, 1), K * 1e18, "Bid Promoted to Top Bid");
 
-    //     vm.prank(user1);
-    //     vm.expectRevert();
-    //     amAmm.withdrawBalance(POOL_0, K * 10e18);
-    // }
+        vm.startPrank(user1);
+        amAmm.bidToken().approve(address(amAmm), 2e18 * K);
+        amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 2e18, 10); // Future Bid
+        vm.stopPrank();
 
-    // // Test if lower bids can be refunded
-    // function test_bid_refund() external {
-    //     vm.prank(user0);
-    //     amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 1e18, K * 1e18, 1);
+        assertEq(amAmm.getManager(POOL_0, 10).bidder, address(user1)); //Confirm they are manager of future bid
 
-    //     vm.prank(user1);
-    //     amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 10e18, K * 10e18, 1); // New Bid Winner
+        vm.startPrank(user1);
+        vm.expectRevert();
+        amAmm.withdrawBalance(POOL_0, K * 10e18);
+        vm.stopPrank();
+    }
 
-    //     assertEq(amAmm._getDeposit(POOL_0, 1), K * 10e18, "Bid Promoted to Top Bid");
+    // Test if lower bids can be refunded
+    function test_bid_refund() external {
+        amAmm.bidToken().mint(address(user0), K * 100e18);
+        amAmm.bidToken().mint(address(user1), K * 100e18);
 
-    //     skip(10800); //Enter Epoch 3
+        vm.startPrank(user0);
+        amAmm.bidToken().approve(address(amAmm), 1e18 * K);
+        amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 1e18, 1);
+        vm.stopPrank();
 
-    //     assertEq(amAmm._userBalance(user0), 1e18 * K, "Ensure User bid is still available to withdraw");
+        vm.startPrank(user1);
+        amAmm.bidToken().approve(address(amAmm), 10e18 * K);
+        amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 10e18, 1); // New Bid Winner
+        vm.stopPrank();
 
-    //     vm.prank(user0); // user0 should have 1e18* k balance and should be able to withdraw
-    //     amAmm.withdrawBalance(POOL_0, 1e18 * K);
+        assertEq(amAmm._getDeposit(POOL_0, 1), K * 10e18, "Bid Promoted to Top Bid");
 
-    //     assertEq(amAmm._userBalance(user0), 0, "Zero Balance after withdrawing");
-    // }
+        skip(10800); //Enter Epoch 3
 
-    // function test_bid_withdraw() external {
-    //     vm.prank(user0);
-    //     amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 1e18, K * 1e18, 0);
-    //     vm.prank(user0);
-    //     amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 2e18, K * 2e18, 0);
+        assertEq(amAmm._userBalance(user0), 1e18 * K, "Ensure User bid is still available to withdraw");
 
-    //     vm.prank(user0);
-    //     amAmm.withdrawBalance(POOL_0, K * 1e18);
+        vm.prank(user0); // user0 should have 1e18* k balance and should be able to withdraw
+        amAmm.withdrawBalance(POOL_0, 1e18 * K);
 
-    //     assertEq(amAmm._userBalance(user0), 0, "Zero Balance after withdrawing");
-    // }
+        assertEq(amAmm._userBalance(user0), 0, "Zero Balance after withdrawing");
+    }
+
+    function test_bid_withdraw() external {
+        amAmm.bidToken().mint(address(user0), K * 100e18);
+        amAmm.bidToken().mint(address(user1), K * 100e18);
+
+        vm.startPrank(user0);
+        amAmm.bidToken().approve(address(amAmm), 1e18 * K);
+        amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 1e18, 1);
+
+        vm.stopPrank();
+
+        vm.startPrank(user0);
+        amAmm.bidToken().approve(address(amAmm), 2e18 * K);
+        amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 2e18, 1);
+        vm.stopPrank();
+
+        vm.prank(user0);
+        amAmm.withdrawBalance(POOL_0, K * 1e18);
+
+        assertEq(amAmm._userBalance(user0), 0, "Zero Balance after withdrawing");
+    }
 
     function _getEpoch(uint256 timestamp) internal pure returns (uint40) {
         return uint40(timestamp / EPOCH_SIZE);

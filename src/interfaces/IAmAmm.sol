@@ -8,6 +8,7 @@ import {CurrencyLibrary, Currency} from "v4-core/types/Currency.sol";
 interface IAmAmm {
     error AmAmm__BidLocked();
     error AmAmm__InvalidBid();
+    error AmAmm__BidOutOfBounds();
     error AmAmm__NotEnabled();
     error AmAmm__Unauthorized();
     error AmAmm__InvalidDepositAmount();
