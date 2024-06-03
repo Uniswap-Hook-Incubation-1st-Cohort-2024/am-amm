@@ -68,7 +68,7 @@ contract AMAMM is IAmAmm {
     }
 
     function getManager(PoolId id, uint40 epoch) public view returns (Bid memory) {
-        if (_getEpoch(id, block.timestamp) - _lastUpdatedEpoch[id] > K(id)) {
+        if (_getEpoch(id, epoch) - _lastUpdatedEpoch[id] <= K(id)) {
             return poolEpochManager[id][_lastUpdatedEpoch[id]];
         } else {
             return poolEpochManager[id][epoch];
@@ -96,9 +96,9 @@ contract AMAMM is IAmAmm {
             revert AmAmm__InvalidBid();
         }
 
-        uint256 prevWinner = _getDeposit(id, _epoch);
+        Bid memory prevWinner = getManager(id, _epoch);
 
-        if (prevWinner == 0 && (_epoch - _lastUpdatedEpoch[id] > K(id))) {
+        if (prevWinner.rent != 0) {
             if (poolEpochManager[id][_lastUpdatedEpoch[id]].rent < rent) {
                 //Userp Top Bidder and only allow bidder to own N epochs instead of K epochs (N < K)
                 _userBalance[poolEpochManager[id][_epoch].bidder] += _getRefund(id, _lastUpdatedEpoch[id], _epoch); //Refund losing bidder
