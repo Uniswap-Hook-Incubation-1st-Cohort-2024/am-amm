@@ -71,22 +71,18 @@ contract AMAMM is IAmAmm {
     /// Bidder actions
     /// -----------------------------------------------------------------------
     /// @inheritdoc IAmAmm
-    function bid(PoolId id, bytes7 payload, uint128 rent, uint128 deposit, uint40 _epoch) external virtual override {
+    function bid(PoolId id, bytes7 payload, uint128 rent, uint40 _epoch) external virtual override {
         /// -----------------------------------------------------------------------
         /// Validation
         /// -----------------------------------------------------------------------
 
         address msgSender = LibMulticaller.senderOrSigner();
 
-        depositToken(id, msgSender, _epoch);
-        // ensure bid is valid
-        // - manager can't be zero address
-        // - bid needs to be greater than the next bid by >10%
-        // - deposit needs to cover the rent for K hours
-        // - deposit needs to be a multiple of rent
-        // - payload needs to be valid
+        uint128 deposit = depositToken(id, msgSender, _epoch);
+
         if (
-            rent <= poolEpochManager[id][_epoch].rent.mulWad(MIN_BID_MULTIPLIER(id)) || deposit < rent * K(id)
+            _epoch > _getEpoch(id, block.timestamp)
+                || rent <= poolEpochManager[id][_epoch].rent.mulWad(MIN_BID_MULTIPLIER(id)) || deposit < rent * K(id)
                 || deposit % rent != 0 || !_payloadIsValid(id, payload)
         ) {
             revert AmAmm__InvalidBid();
@@ -94,9 +90,15 @@ contract AMAMM is IAmAmm {
 
         uint256 prevWinner = _getDeposit(id, _epoch);
 
-        if (prevWinner == 0 && _getEpoch(id, block.timestamp) - _lastUpdatedEpoch[id] < K(id)) {
-            if (poolEpochManager[id][_lastUpdatedEpoch[id]].rent < rent && _findUpperManager(id, _epoch) == 0) {
-                //Userp Top Bidder
+        if (
+            prevWinner == 0
+                && (
+                    _lastUpdatedEpoch[id] > _getEpoch(id, block.timestamp)
+                        && _getEpoch(id, block.timestamp) - _lastUpdatedEpoch[id] < K(id)
+                )
+        ) {
+            if (poolEpochManager[id][_lastUpdatedEpoch[id]].rent < rent) {
+                //Userp Top Bidder and only allow bidder to own N epochs instead of K epochs (N < K)
                 _userBalance[poolEpochManager[id][_epoch].bidder] += _getRefund(id, _lastUpdatedEpoch[id], _epoch); //Refund losing bidder
 
                 poolEpochManager[id][_epoch] = Bid({bidder: msgSender, payload: payload, rent: rent});
@@ -111,11 +113,14 @@ contract AMAMM is IAmAmm {
         _updateLastUpdatedEpoch(id, _epoch);
     }
 
-    function depositToken(PoolId id, address depositor, uint40 _epoch) internal returns (uint256) {
-        uint256 amount = _getDeposit(id, _epoch);
-        IERC20(_bidToken[id]).transferFrom(depositor, address(this), amount);
+    function depositToken(PoolId id, address depositor, uint40 _epoch) internal returns (uint128) {
+        uint128 amount = uint128(_getDeposit(id, _epoch));
+        if (_userBalance[depositor] >= amount) {
+            uint128 remainderAmount = uint128(_userBalance[depositor] - amount);
+            IERC20(_bidToken[id]).transferFrom(depositor, address(this), remainderAmount);
+            _userBalance[depositor] += remainderAmount;
+        }
 
-        _userBalance[depositor] += amount;
         return amount;
     }
 
@@ -180,13 +185,13 @@ contract AMAMM is IAmAmm {
     function _updateLastUpdatedEpoch(PoolId id, uint40 _epoch) internal returns (uint40) {
         if (_lastUpdatedEpoch[id] > _getEpoch(id, block.timestamp)) {
             if (_epoch < _lastUpdatedEpoch[id]) {
-                _lastUpdatedEpoch[id] = _epoch;
-                return _epoch;
+                return _lastUpdatedEpoch[id] = _epoch;
             } else {
                 return _lastUpdatedEpoch[id];
             }
+        } else {
+            return _lastUpdatedEpoch[id] = _epoch;
         }
-        return _lastUpdatedEpoch[id];
     }
 
     function _findUpperManager(PoolId id, uint40 _epoch) internal view returns (uint40) {

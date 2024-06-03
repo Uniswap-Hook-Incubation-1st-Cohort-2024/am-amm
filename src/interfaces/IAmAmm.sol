@@ -32,8 +32,7 @@ interface IAmAmm {
     /// @param id The pool id
     /// @param payload The payload specifying what parameters the manager wants, e.g. swap fee
     /// @param rent The rent per epoch
-    /// @param deposit The deposit amount, must be a multiple of rent and cover rent for >=K epochs
-    function bid(PoolId id, bytes7 payload, uint128 rent, uint128 deposit, uint40 _epoch) external;
+    function bid(PoolId id, bytes7 payload, uint128 rent, uint40 _epoch) external;
 
     /// @notice Withdraws from the deposit of the top bid. Only callable by topBids[id].manager. Reverts if D_top / R_top < K.
     /// @param id The pool id
