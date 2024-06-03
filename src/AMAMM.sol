@@ -63,8 +63,16 @@ contract AMAMM is IAmAmm {
     /// Getter actions
     /// -----------------------------------------------------------------------
 
-    function getManager(PoolId id, uint40 epoch) public view returns (Bid memory) {
+    function getCurrentManager(PoolId id, uint40 epoch) public view returns (Bid memory) {
         return poolEpochManager[id][epoch];
+    }
+
+    function getManager(PoolId id, uint40 epoch) public view returns (Bid memory) {
+        if (_getEpoch(id, block.timestamp) - _lastUpdatedEpoch[id] > K(id)) {
+            return poolEpochManager[id][_lastUpdatedEpoch[id]];
+        } else {
+            return poolEpochManager[id][epoch];
+        }
     }
 
     /// -----------------------------------------------------------------------
@@ -90,13 +98,7 @@ contract AMAMM is IAmAmm {
 
         uint256 prevWinner = _getDeposit(id, _epoch);
 
-        if (
-            prevWinner == 0
-                && (
-                    _lastUpdatedEpoch[id] > _getEpoch(id, block.timestamp)
-                        && _getEpoch(id, block.timestamp) - _lastUpdatedEpoch[id] < K(id)
-                )
-        ) {
+        if (prevWinner == 0 && (_epoch - _lastUpdatedEpoch[id] > K(id))) {
             if (poolEpochManager[id][_lastUpdatedEpoch[id]].rent < rent) {
                 //Userp Top Bidder and only allow bidder to own N epochs instead of K epochs (N < K)
                 _userBalance[poolEpochManager[id][_epoch].bidder] += _getRefund(id, _lastUpdatedEpoch[id], _epoch); //Refund losing bidder
@@ -183,15 +185,9 @@ contract AMAMM is IAmAmm {
     }
 
     function _updateLastUpdatedEpoch(PoolId id, uint40 _epoch) internal returns (uint40) {
-        if (_lastUpdatedEpoch[id] > _getEpoch(id, block.timestamp)) {
-            if (_epoch < _lastUpdatedEpoch[id]) {
-                return _lastUpdatedEpoch[id] = _epoch;
-            } else {
-                return _lastUpdatedEpoch[id];
-            }
-        } else {
-            return _lastUpdatedEpoch[id] = _epoch;
-        }
+        //We know that _epoch - currEpoch <= k
+
+        return _lastUpdatedEpoch[id] = _epoch;
     }
 
     function _findUpperManager(PoolId id, uint40 _epoch) internal view returns (uint40) {
