@@ -22,7 +22,7 @@ contract AMAMMTest is Test, Deployers {
         (currency0, currency1) = deployMintAndApprove2Currencies();
 
         address hookAddress = address(uint160(Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG));
-        deployCodeTo("AMAMM.sol", abi.encode(manager), hookAddress);
+        deployCodeTo("AMAMMHOOK.sol", abi.encode(manager), hookAddress);
         hook = AMAMMHOOK(hookAddress);
 
         // key = PoolKey(currency0, currency1, 3000, 60, limitOrder);
