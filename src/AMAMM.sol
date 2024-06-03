@@ -99,7 +99,7 @@ contract AMAMM is IAmAmm {
         Bid memory prevWinner = getManager(id, _epoch);
 
         if (prevWinner.rent != 0) {
-            if (poolEpochManager[id][_lastUpdatedEpoch[id]].rent < rent) {
+            if (prevWinner.rent < rent) {
                 //Userp Top Bidder and only allow bidder to own N epochs instead of K epochs (N < K)
                 _userBalance[poolEpochManager[id][_epoch].bidder] += _getRefund(id, _lastUpdatedEpoch[id], _epoch); //Refund losing bidder
 
