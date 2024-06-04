@@ -63,16 +63,12 @@ contract AMAMM is IAmAmm {
     /// Getter actions
     /// -----------------------------------------------------------------------
 
-    function getCurrentManager(PoolId id, uint40 epoch) public view returns (Bid memory) {
-        return poolEpochManager[id][epoch];
-    }
-
     function getLastManager(PoolId id, uint40 targetEpoch) public view returns (Bid memory) {
         if (_lastUpdatedEpoch[id] > targetEpoch) {
-            if (_lastUpdatedEpoch[id] > K(id)) return poolEpochManager[id][_lastUpdatedEpoch[id] - K(id)];
+            if (_lastUpdatedEpoch[id] - targetEpoch <= K(id)) return poolEpochManager[id][_lastUpdatedEpoch[id]];
             else return poolEpochManager[id][targetEpoch];
         } else {
-            if (targetEpoch - _lastUpdatedEpoch[id] < K(id)) {
+            if (targetEpoch - _lastUpdatedEpoch[id] <= K(id)) {
                 return poolEpochManager[id][_lastUpdatedEpoch[id]];
             } else {
                 return poolEpochManager[id][targetEpoch];
@@ -127,14 +123,10 @@ contract AMAMM is IAmAmm {
         if (_userBalance[depositor] >= amount) {
             uint128 remainderAmount = uint128(_userBalance[depositor] - amount);
             _pullBidToken(id, depositor, remainderAmount);
-            if (remainderAmount > 0) {
-                _userBalance[depositor] += remainderAmount;
-            }
+            _userBalance[depositor] += remainderAmount;
         } else {
             _pullBidToken(id, depositor, amount);
-            if (amount > 0) {
-                _userBalance[depositor] += amount;
-            }
+            _userBalance[depositor] += amount;
         }
 
         return amount;

@@ -73,7 +73,7 @@ contract AmAmmTest is Test {
         amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 10e18, 1);
         vm.stopPrank();
 
-        assertEq(amAmm.getCurrentManager(POOL_0, 1).bidder, address(user1));
+        assertEq(amAmm.getLastManager(POOL_0, 1).bidder, address(user1));
 
         vm.startPrank(user2);
         amAmm.bidToken().approve(address(amAmm), type(uint256).max);
