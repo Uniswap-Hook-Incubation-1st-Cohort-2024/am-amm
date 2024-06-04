@@ -26,8 +26,16 @@ contract AMAMMHOOKTest is Test, Deployers {
     AMAMMHOOK hook;
     AmAmmMock amAmm;
 
+    address user0 = makeAddr("USER_0");
+    address user1 = makeAddr("USER_1");
+    address user2 = makeAddr("USER_2");
+
+    uint128 internal constant K = 24; // 24 windows (hours)
+    uint256 internal constant EPOCH_SIZE = 1 hours;
+    uint256 internal constant MIN_BID_MULTIPLIER = 1.1e18; // 10%
     function setUp() public {
         // Deploy AMAMM
+
         amAmm = new AmAmmMock(new ERC20Mock(), new ERC20Mock(), new ERC20Mock());
         amAmm.bidToken().approve(address(amAmm), type(uint256).max);
         amAmm.setEnabled(POOL_0, true);
@@ -46,7 +54,7 @@ contract AMAMMHOOKTest is Test, Deployers {
                 Hooks.BEFORE_SWAP_FLAG
             )
         );
-        deployCodeTo("AMAMMHOOK.sol", abi.encode(manager, address(amAmm)), hookAddress);
+        deployCodeTo("AMAMMHOOK.sol", abi.encode(manager, address(amAmm), amAmm.bidToken()), hookAddress);
         hook = AMAMMHOOK(hookAddress);
 
         // key = PoolKey(currency0, currency1, 3000, 60, limitOrder);
@@ -60,17 +68,23 @@ contract AMAMMHOOKTest is Test, Deployers {
         );
     }
 
-    function test_swap_exactInput_zeroForOne() public {
+    function test_swap_exactInput_zeroForOne_withNoFee() public {
+        // amAmm.bidToken().mint(address(user0), K * 100e18);
+        // amAmm.bidToken().mint(address(user1), K * 100e18);
+        // amAmm.bidToken().mint(address(user2), K * 100e18);
+
         uint256 balanceBefore0 = currency0.balanceOf(address(this));
         console.log("balanceBefore0: ", balanceBefore0);
         uint256 balanceBefore1 = currency1.balanceOf(address(this));
         console.log("balanceBefore1: ", balanceBefore1);
+        // uint256 rentBefore = amAmm.bidToken().balanceOf(address(this));
+        // console.log("rentBefore: ", rentBefore);
 
         uint256 amountToSwap = 1000;
         swap(key, true, -int256(amountToSwap), ZERO_BYTES);
 
         // input is 1000 for output of 998 with this much liquidity available
-        // plus a fee of 1.23%(100) on unspecified (output) => (998*123)/10000 = 12
+        // plus a fee of 1.23% on unspecified (output) => (998*123)/10000 = 12
         // assertEq(
         //     currency0.balanceOf(address(this)),
         //     balanceBefore0 - amountToSwap,
@@ -82,8 +96,8 @@ contract AMAMMHOOKTest is Test, Deployers {
         //     "amount 1"
         // );
 
-        // input is 1000 for output of 998 with this much liquidity available
-        // plus a fee of 1.1%(0) on unspecified (output) => (998*110)/10000 = 11
+        // input is 1000 for output of 999 with this much liquidity available
+        // plus a fee of 0
         // It proves that the swap fee has been changed
         assertEq(
             currency0.balanceOf(address(this)),
@@ -92,9 +106,61 @@ contract AMAMMHOOKTest is Test, Deployers {
         );
         assertEq(
             currency1.balanceOf(address(this)),
-            balanceBefore1 + (998 - 11),
+            balanceBefore1 + 999,
             "amount 1"
+        );
+        // assertEq(
+        //     currency1.balanceOf(address(this)),
+        //     balanceBefore1 + 999,
+        //     "amount 1"
+        // );
+    }
+
+    function test_swap_exactInput_zeroForOne_withFee() public {
+        amAmm.bidToken().mint(address(user0), K * 100e18);
+        amAmm.bidToken().mint(address(user1), K * 100e18);
+        amAmm.bidToken().mint(address(user2), K * 100e18);
+
+        vm.startPrank(user0);
+        amAmm.bidToken().approve(address(amAmm), K * 100e18);
+        amAmm.bidToken().approve(address(hook), K * 100e18);
+        amAmm.bid(POOL_0, _swapFeeToPayload(123), 1e18, 1);
+        vm.stopPrank();
+
+        assertEq(amAmm._getDeposit(POOL_0, 1), K * 1e18, "Bid Promoted to Top Bid");
+
+        skip(10800); //Enter Epoch 3
+
+        uint256 balanceBefore0 = currency0.balanceOf(address(this));
+        console.log("balanceBefore0: ", balanceBefore0);
+        uint256 balanceBefore1 = currency1.balanceOf(address(this));
+        console.log("balanceBefore1: ", balanceBefore1);
+        uint256 rentBefore = amAmm.bidToken().balanceOf(address(amAmm));
+        console.log("rentBefore: ", rentBefore);
+
+        uint256 amountToSwap = 1000;
+        swap(key, true, -int256(amountToSwap), ZERO_BYTES);
+
+        // input is 1000 for output of 998 with this much liquidity available
+        // plus a fee of 1.23% on unspecified (output) => (998*123)/10000 = 12
+        assertEq(
+            currency0.balanceOf(address(this)),
+            balanceBefore0 - amountToSwap,
+            "amount 0"
+        );
+        assertEq(
+            currency1.balanceOf(address(this)),
+            balanceBefore1 + (998 - 12),
+            "amount 1"
+        );
+        assertEq(
+            amAmm.bidToken().balanceOf(address(amAmm)),
+            rentBefore - 1e18,
+            "amount 2"
         );
     }
 
+    function _swapFeeToPayload(uint24 swapFee) internal pure returns (bytes7) {
+        return bytes7(bytes3(swapFee));
+    }
 }

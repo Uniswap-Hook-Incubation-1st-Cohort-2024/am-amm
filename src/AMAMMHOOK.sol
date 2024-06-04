@@ -17,6 +17,7 @@ import {BeforeSwapDelta, toBeforeSwapDelta, BeforeSwapDeltaLibrary} from "v4-cor
 import {PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
 import {IAmAmm} from "./interfaces/IAmAmm.sol";
 import {LPFeeLibrary} from "v4-core/libraries/LPFeeLibrary.sol";
+import {console} from "forge-std/console.sol";
 
 contract AMAMMHOOK is BaseHook {
     using SafeCast for uint256;
@@ -24,18 +25,17 @@ contract AMAMMHOOK is BaseHook {
     using LPFeeLibrary for uint24;
     
     IAmAmm public immutable AMAMM = IAmAmm(AMAMM);
+    Currency public immutable bidToken;
 
     error MustUseDynamicFee();
 
-    // TODO: set this value to the ePoch swap fee
-
-    uint128 public constant SWAP_FEE_BIPS = 123; // 123/10000 = 1.23%
     uint128 public constant TOTAL_BIPS = 10000;
 
-    constructor(IPoolManager poolManager, address _AMAMM)
+    constructor(IPoolManager poolManager, address _AMAMM, Currency _bidToken)
         BaseHook(poolManager)
     {
         AMAMM = IAmAmm(_AMAMM);
+        bidToken = _bidToken;
     }
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
@@ -76,12 +76,9 @@ contract AMAMMHOOK is BaseHook {
         poolManagerOnly
         returns (bytes4, BeforeSwapDelta, uint24)
     {
-        PoolId poolid;
-        assembly {
-            poolid := keccak256(key, mul(32, 5))
-        }
-
-        uint24 fee = uint24(bytes3(AMAMM.getManager(poolid, AMAMM._getEpoch(poolid, block.timestamp)).payload));
+        IAmAmm.Bid memory _bid = _getManager(key.toId());
+        uint24 fee = _getFee(_bid);
+        console.log("fee: ", fee);
         poolManager.updateDynamicLPFee(key, fee);
 
         return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
@@ -101,10 +98,27 @@ contract AMAMMHOOK is BaseHook {
         // if fee is on output, get the absolute output amount
         if (swapAmount < 0) swapAmount = -swapAmount;
 
-        uint256 feeAmount = (uint128(swapAmount) * SWAP_FEE_BIPS) / TOTAL_BIPS;
-        // TODO: change address(this) to the ePoche manager address
-        poolManager.take(feeCurrency, address(this), feeAmount);
+        IAmAmm.Bid memory _bid = _getManager(key.toId());
+        uint24 fee = _getFee(_bid);
+        address bidder = _bid.bidder;
+        uint128 rent = _bid.rent;
+
+        uint256 feeAmount = (uint128(swapAmount) * uint128(fee)) / TOTAL_BIPS;
+        // manager takes fee
+        console.log("feeAmount: ", feeAmount);
+        poolManager.take(feeCurrency, bidder, feeAmount);
+        // LP charge rent
+        console.log("rent: ", rent);
+        poolManager.take(bidToken, address(AMAMM), rent);
 
         return (IHooks.afterSwap.selector, feeAmount.toInt128());
+    }
+
+    function _getManager(PoolId poolid) internal returns (IAmAmm.Bid memory) {
+        return AMAMM.getManager(poolid, AMAMM._getEpoch(poolid, block.timestamp));
+    }
+
+    function _getFee(IAmAmm.Bid memory _bid) internal view returns (uint24) {
+        return uint24(bytes3(_bid.payload));
     }
 }
