@@ -20,5 +20,9 @@ Miro: [Miro board](https://miro.com/app/board/uXjVKDNc1nI=/)
 - [x] beforeSwap hook to update dynamic fee
 - [x] update Bid to have swapFee so that user could bid and set swapFee together
 - [x] hook initialisation to set contract address for AMAMM
-- [ ] Integration test to deploy AMAMM first, then deploy hook contract and initialise with AMAMM address with all the test senarios
-- [ ] Record video and prepare for submission.
+- [ ] Integration test to deploy AMAMM first, then deploy hook contract and initialise with AMAMM address with all the test scenarios
+- [ ] Record the video and prepare it for submission.
+
+Integration test scenarios:
+- As a user, I should be able to bid an epoch to be a manager so that I can collect all fees as expecting high volume
+- As a user, I should be able to bid an epoch to be a manager so that I can set a high swap fee that I would be the only arbitrageur
