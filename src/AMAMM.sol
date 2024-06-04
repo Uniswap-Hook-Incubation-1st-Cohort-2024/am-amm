@@ -21,10 +21,6 @@ import {IHooks} from "v4-core/interfaces/IHooks.sol";
 contract AMAMM is IAmAmm {
     constructor() public {}
 
-    // TODO: set this value to the ePoch swap fee
-    uint128 public constant SWAP_FEE_BIPS = 123; // 123/10000 = 1.23%
-    uint128 public constant TOTAL_BIPS = 10000;
-
     /// -----------------------------------------------------------------------
     /// Library usage
     /// -----------------------------------------------------------------------
@@ -166,6 +162,7 @@ contract AMAMM is IAmAmm {
     /// @param id pool id
     /// @param timestamp current timestamp
     function _getEpoch(PoolId id, uint256 timestamp) public view returns (uint40) {
+        console.log("mmmmmm");
         return uint40(timestamp / EPOCH_SIZE(id));
     }
 
