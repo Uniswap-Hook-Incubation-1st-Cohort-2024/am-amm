@@ -16,7 +16,7 @@ Miro: [Miro board](https://miro.com/app/board/uXjVKDNc1nI=/)
 - [ ] setBidPayload() -> setSwapFeeRate()
 - [x] afterSwap - to redistribute the swap fee to the current manager (Lecky)
 - [ ] _burnBidToken() -> _chargeRent() - we charge with bidToken
-- [ ] Unit tests for current implementation.
+- [x] Unit tests for current implementation.
 - [x] beforeSwap hook to update dynamic fee
 - [x] update Bid to have swapFee so that user could bid and set swapFee together
 - [ ] hook initialisation to set contract address for AMAMM
