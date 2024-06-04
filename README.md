@@ -20,6 +20,7 @@ Miro: [Miro board](https://miro.com/app/board/uXjVKDNc1nI=/)
 - [x] beforeSwap hook to update dynamic fee
 - [x] update Bid to have swapFee so that user could bid and set swapFee together
 - [x] hook initialisation to set contract address for AMAMM
+- [ ] "The current highest bidder in the ongoing auction, known as the manager, pays rent to liquidity providers." - I think we need to charge a managerFee and give it back to the LP, but I am not sure how much to charge, though.
 - [ ] Integration test to deploy AMAMM first, then deploy hook contract and initialise with AMAMM address with all the test scenarios
 - [ ] Record the video and prepare it for submission.
 
