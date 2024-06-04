@@ -63,7 +63,7 @@ contract AMAMM is IAmAmm {
         return poolEpochManager[id][epoch];
     }
 
-    function getManager(PoolId id, uint40 epoch) public view returns (Bid memory) {
+    function getManager(PoolId id, uint40 epoch) public override view virtual returns (Bid memory) {
         //@dev getEpoch(id, epoch) shoudl always be smaller than lastupdated
         if (_lastUpdatedEpoch[id] - _getEpoch(id, epoch) <= K(id)) {
             return poolEpochManager[id][_lastUpdatedEpoch[id]];
@@ -162,7 +162,6 @@ contract AMAMM is IAmAmm {
     /// @param id pool id
     /// @param timestamp current timestamp
     function _getEpoch(PoolId id, uint256 timestamp) public view returns (uint40) {
-        console.log("mmmmmm");
         return uint40(timestamp / EPOCH_SIZE(id));
     }
 

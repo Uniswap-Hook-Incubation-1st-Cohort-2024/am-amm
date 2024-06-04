@@ -15,31 +15,32 @@ import {SafeCast} from "v4-core/libraries/SafeCast.sol";
 import {BalanceDelta, BalanceDeltaLibrary} from "v4-core/types/BalanceDelta.sol";
 import {BeforeSwapDelta, toBeforeSwapDelta, BeforeSwapDeltaLibrary} from "v4-core/types/BeforeSwapDelta.sol";
 import {PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
-import {AmAmmMock} from "../test/mocks/AmAmmMock.sol";
-import "../test/mocks/ERC20Mock.sol";
-import {ProtocolFeeLibrary} from "v4-core/libraries/ProtocolFeeLibrary.sol";
+import {IAmAmm} from "./interfaces/IAmAmm.sol";
+import {LPFeeLibrary} from "v4-core/libraries/LPFeeLibrary.sol";
 
-contract AMAMMHOOK is BaseHook, AmAmmMock {
+contract AMAMMHOOK is BaseHook {
     using SafeCast for uint256;
     using PoolIdLibrary for PoolKey;
-    using ProtocolFeeLibrary for uint24;
+    using LPFeeLibrary for uint24;
+    
+    IAmAmm public immutable AMAMM = IAmAmm(AMAMM);
+
+    error MustUseDynamicFee();
+
     // TODO: set this value to the ePoch swap fee
 
     uint128 public constant SWAP_FEE_BIPS = 123; // 123/10000 = 1.23%
     uint128 public constant TOTAL_BIPS = 10000;
 
-    AmAmmMock amAmm;
-
-    constructor(IPoolManager poolManager)
+    constructor(IPoolManager poolManager, address _AMAMM)
         BaseHook(poolManager)
-        AmAmmMock(new ERC20Mock(), new ERC20Mock(), new ERC20Mock())
     {
-        amAmm = new AmAmmMock(new ERC20Mock(), new ERC20Mock(), new ERC20Mock());
+        AMAMM = IAmAmm(_AMAMM);
     }
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
-            beforeInitialize: false,
+            beforeInitialize: true,
             afterInitialize: false,
             beforeAddLiquidity: false,
             afterAddLiquidity: false,
@@ -56,6 +57,19 @@ contract AMAMMHOOK is BaseHook, AmAmmMock {
         });
     }
 
+    function beforeInitialize(
+        address,
+        PoolKey calldata key,
+        uint160,
+        bytes calldata
+    ) external pure override returns (bytes4) {
+        // `.isDynamicFee()` function comes from using
+        // the `SwapFeeLibrary` for `uint24`
+        if (!key.fee.isDynamicFee()) revert MustUseDynamicFee();
+        return this.beforeInitialize.selector;
+    }
+
+
     function beforeSwap(address sender, PoolKey calldata key, IPoolManager.SwapParams calldata, bytes calldata)
         external
         override
@@ -67,16 +81,10 @@ contract AMAMMHOOK is BaseHook, AmAmmMock {
             poolid := keccak256(key, mul(32, 5))
         }
 
-        Bid memory userBid = amAmm.getManager(poolid, amAmm._getEpoch(poolid, block.timestamp));
+        uint24 fee = uint24(bytes3(AMAMM.getManager(poolid, AMAMM._getEpoch(poolid, block.timestamp)).payload));
+        poolManager.updateDynamicLPFee(key, fee);
 
-        if (sender == userBid.bidder) {
-            uint24 fee = uint24(bytes3(amAmm.getManager(poolid, amAmm._getEpoch(poolid, block.timestamp)).payload));
-
-            console.log("diemdiemiedm", fee);
-            poolManager.updateDynamicLPFee(key, fee);
-        }
-
-        return (IHooks.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
+        return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
     }
 
     function afterSwap(

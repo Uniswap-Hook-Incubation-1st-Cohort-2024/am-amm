@@ -45,4 +45,16 @@ interface IAmAmm {
     /// @param recipient The address of the recipient
     /// @return fees The amount of fees claimed
     function claimFees(Currency currency, address recipient) external returns (uint256 fees);
+
+    /// @notice Get the current manager of a pool
+    /// @param id The pool id
+    /// @param epoch The current epoch
+    /// @return Bid The bid for the epoch
+    function getManager(PoolId id, uint40 epoch) external returns (Bid memory);
+
+    /// @notice Get the current epoch
+    /// @param id The pool id
+    /// @param timestamp The current timestamp
+    /// @return epoch The current epoch
+    function _getEpoch(PoolId id, uint256 timestamp) external returns (uint40);
 }
