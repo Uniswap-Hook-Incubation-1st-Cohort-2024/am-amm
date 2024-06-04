@@ -67,12 +67,16 @@ contract AMAMM is IAmAmm {
         return poolEpochManager[id][epoch];
     }
 
-    function getManager(PoolId id, uint40 epoch) public view returns (Bid memory) {
-        //@dev getEpoch(id, epoch) shoudl always be smaller than lastupdated
-        if (_lastUpdatedEpoch[id] - _getEpoch(id, epoch) <= K(id)) {
-            return poolEpochManager[id][_lastUpdatedEpoch[id]];
+    function getLastManager(PoolId id, uint40 targetEpoch) public view returns (Bid memory) {
+        if (_lastUpdatedEpoch[id] > targetEpoch) {
+            if (_lastUpdatedEpoch[id] > K(id)) return poolEpochManager[id][_lastUpdatedEpoch[id] - K(id)];
+            else return poolEpochManager[id][targetEpoch];
         } else {
-            return poolEpochManager[id][epoch];
+            if (targetEpoch - _lastUpdatedEpoch[id] < K(id)) {
+                return poolEpochManager[id][_lastUpdatedEpoch[id]];
+            } else {
+                return poolEpochManager[id][targetEpoch];
+            }
         }
     }
 
@@ -99,14 +103,12 @@ contract AMAMM is IAmAmm {
         ) {
             revert AmAmm__InvalidBid();
         }
+        Bid memory prevWinner = getLastManager(id, _epoch);
 
-        if (_lastUpdatedEpoch[id] > _getEpoch(id, block.timestamp)) {
-            Bid memory prevWinner = getManager(id, _epoch);
-
-            if (prevWinner.rent < rent && prevWinner.rent != 0) {
+        if (prevWinner.rent != 0) {
+            if (prevWinner.rent < rent) {
                 //Userp Top Bidder and only allow bidder to own N epochs instead of K epochs (N < K)
-                _userBalance[poolEpochManager[id][_epoch].bidder] += _getRefund(id, _lastUpdatedEpoch[id], _epoch); //Refund losing bidder
-
+                _userBalance[prevWinner.bidder] += _getRefund(id, _lastUpdatedEpoch[id], _epoch); //Refund losing bidder
                 poolEpochManager[id][_epoch] = Bid({bidder: msgSender, payload: payload, rent: rent});
 
                 _userBalance[msgSender] -= _getDeposit(id, _epoch);
@@ -116,7 +118,6 @@ contract AMAMM is IAmAmm {
 
             _userBalance[msgSender] -= _getDeposit(id, _epoch);
         }
-
         _updateLastUpdatedEpoch(id, _epoch);
     }
 
@@ -126,16 +127,20 @@ contract AMAMM is IAmAmm {
         if (_userBalance[depositor] >= amount) {
             uint128 remainderAmount = uint128(_userBalance[depositor] - amount);
             _pullBidToken(id, depositor, remainderAmount);
-            _userBalance[depositor] += remainderAmount;
+            if (remainderAmount > 0) {
+                _userBalance[depositor] += remainderAmount;
+            }
         } else {
             _pullBidToken(id, depositor, amount);
-            _userBalance[depositor] += amount;
+            if (amount > 0) {
+                _userBalance[depositor] += amount;
+            }
         }
 
         return amount;
     }
-
     /// @inheritdoc IAmAmm
+
     function withdrawBalance(PoolId id, uint128 _amount) external virtual override returns (uint128) {
         address msgSender = LibMulticaller.senderOrSigner();
 
@@ -143,9 +148,7 @@ contract AMAMM is IAmAmm {
             revert AmAmm__InvalidBid();
         }
 
-        unchecked {
-            _userBalance[msgSender] -= _amount;
-        }
+        _userBalance[msgSender] -= _amount;
         _pushBidToken(id, msgSender, _amount);
 
         return _amount;

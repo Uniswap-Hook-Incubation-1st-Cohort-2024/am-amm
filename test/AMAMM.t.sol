@@ -73,12 +73,23 @@ contract AmAmmTest is Test {
         amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 10e18, 1);
         vm.stopPrank();
 
-        assertEq(amAmm.getManager(POOL_0, 0).bidder, address(user1));
+        assertEq(amAmm.getCurrentManager(POOL_0, 1).bidder, address(user1));
 
         vm.startPrank(user2);
         amAmm.bidToken().approve(address(amAmm), type(uint256).max);
         vm.expectRevert();
         amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 1e18, 1);
+        vm.stopPrank();
+    }
+
+    //Test for Future Bid
+    function test_futureBid() external {
+        amAmm.bidToken().mint(address(user0), K * 100e18);
+
+        vm.startPrank(user0);
+        amAmm.bidToken().approve(address(amAmm), K * 1e18);
+        vm.expectRevert();
+        amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 1e18, 25);
         vm.stopPrank();
     }
 
@@ -100,7 +111,7 @@ contract AmAmmTest is Test {
         amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 2e18, 10); // Future Bid
         vm.stopPrank();
 
-        assertEq(amAmm.getManager(POOL_0, 10).bidder, address(user1)); //Confirm they are manager of future bid
+        assertEq(amAmm.getLastManager(POOL_0, 10).bidder, address(user1)); //Confirm they are manager of future bid
 
         vm.startPrank(user1);
         vm.expectRevert();
@@ -109,7 +120,7 @@ contract AmAmmTest is Test {
     }
 
     // Test if lower bids can be refunded
-    function test_bid_refund() external {
+    function test_bid_full_refund() external {
         amAmm.bidToken().mint(address(user0), K * 100e18);
         amAmm.bidToken().mint(address(user1), K * 100e18);
 
@@ -129,8 +140,36 @@ contract AmAmmTest is Test {
 
         assertEq(amAmm._userBalance(user0), 1e18 * K, "Ensure User bid is still available to withdraw");
 
-        vm.prank(user0); // user0 should have 1e18* k balance and should be able to withdraw
+        vm.prank(user0); // user0 should have 1e18 * k balance and should be able to withdraw
         amAmm.withdrawBalance(POOL_0, 1e18 * K);
+
+        assertEq(amAmm._userBalance(user0), 0, "Zero Balance after withdrawing");
+    }
+
+    // Test if lower bids can be refunded
+    function test_bid_partial_refund() external {
+        amAmm.bidToken().mint(address(user0), K * 100e18);
+        amAmm.bidToken().mint(address(user1), K * 100e18);
+
+        vm.startPrank(user0);
+        amAmm.bidToken().approve(address(amAmm), 1e18 * K);
+        amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 1e18, 1);
+        vm.stopPrank();
+
+        vm.startPrank(user1);
+        amAmm.bidToken().approve(address(amAmm), 10e18 * K);
+        amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 10e18, 12); // New Bid Winner midway between user0's bid so need to refund half
+        vm.stopPrank();
+
+        assertEq(amAmm._getDeposit(POOL_0, 12), K * 10e18, "Bid Promoted to Top Bid");
+
+        skip(43200); //Enter Epoch 3
+
+        uint256 remainingAmount = (1e18 * K) - (1e18 * 11);
+        assertEq(amAmm._userBalance(user0), remainingAmount, "Ensure User bid is still available to withdraw");
+
+        vm.prank(user0); // user0 should have (1e18 * K) - (1e18 * 11) balance and should be able to withdraw
+        amAmm.withdrawBalance(POOL_0, uint128(remainingAmount));
 
         assertEq(amAmm._userBalance(user0), 0, "Zero Balance after withdrawing");
     }
