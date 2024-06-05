@@ -17,13 +17,22 @@ import {FixedPointMathLib} from "../lib/solady/src/utils/FixedPointMathLib.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
+import "../test/mocks/ERC20Mock.sol";
 
 contract AMAMM is IAmAmm {
     constructor() public {}
 
+    // Modifier to check if the sender is the owner
+    modifier isAmAmm(PoolId id) {
+        require(_amAmmEnabled(id), "This Pool is not AMAMM enabled");
+        _;
+    }
+
     // TODO: set this value to the ePoch swap fee
     uint128 public constant SWAP_FEE_BIPS = 123; // 123/10000 = 1.23%
     uint128 public constant TOTAL_BIPS = 10000;
+
+    ERC20Mock public immutable bidToken;
 
     /// -----------------------------------------------------------------------
     /// Library usage
@@ -58,6 +67,7 @@ contract AMAMM is IAmAmm {
     mapping(PoolId id => mapping(uint40 => Bid)) public poolEpochManager;
     mapping(address manager => mapping(Currency currency => uint256)) internal _fees;
     mapping(PoolId id => address) internal _bidToken;
+    mapping(PoolId id => bool) public enabled;
 
     /// -----------------------------------------------------------------------
     /// Getter actions
@@ -80,7 +90,7 @@ contract AMAMM is IAmAmm {
     /// Bidder actions
     /// -----------------------------------------------------------------------
     /// @inheritdoc IAmAmm
-    function bid(PoolId id, bytes7 payload, uint128 rent, uint40 _epoch) external virtual override {
+    function bid(PoolId id, bytes7 payload, uint128 rent, uint40 _epoch) external virtual override isAmAmm(id) {
         /// -----------------------------------------------------------------------
         /// Validation
         /// -----------------------------------------------------------------------
@@ -90,16 +100,15 @@ contract AMAMM is IAmAmm {
             revert AmAmm__BidOutOfBounds();
         }
 
-        uint128 deposit = depositToken(id, msgSender, rent);
+        depositToken(id, msgSender, rent);
+        Bid memory prevWinner = getLastManager(id, _epoch);
 
         if (
-            _epoch <= _getEpoch(id, block.timestamp)
-                || rent <= poolEpochManager[id][_epoch].rent.mulWad(MIN_BID_MULTIPLIER(id)) || deposit < rent * K(id)
+            _epoch <= _getEpoch(id, block.timestamp) || rent <= prevWinner.rent.mulWad(MIN_BID_MULTIPLIER(id))
                 || !_payloadIsValid(id, payload)
         ) {
             revert AmAmm__InvalidBid();
         }
-        Bid memory prevWinner = getLastManager(id, _epoch);
 
         if (prevWinner.rent != 0) {
             if (prevWinner.rent < rent) {
@@ -117,7 +126,7 @@ contract AMAMM is IAmAmm {
         _updateLastUpdatedEpoch(id, _epoch);
     }
 
-    function depositToken(PoolId id, address depositor, uint128 rent) internal returns (uint128) {
+    function depositToken(PoolId id, address depositor, uint128 rent) internal {
         uint128 amount = uint128(rent * K(id));
 
         if (_userBalance[depositor] >= amount) {
@@ -128,15 +137,13 @@ contract AMAMM is IAmAmm {
             _pullBidToken(id, depositor, amount);
             _userBalance[depositor] += amount;
         }
-
-        return amount;
     }
     /// @inheritdoc IAmAmm
 
-    function withdrawBalance(PoolId id, uint128 _amount) external virtual override returns (uint128) {
+    function withdrawBalance(PoolId id, uint128 _amount) external virtual override isAmAmm(id) returns (uint128) {
         address msgSender = LibMulticaller.senderOrSigner();
 
-        if (!_amAmmEnabled(id) || _userBalance[msgSender] < _amount) {
+        if (_userBalance[msgSender] < _amount) {
             revert AmAmm__InvalidBid();
         }
 
@@ -181,6 +188,16 @@ contract AMAMM is IAmAmm {
         return 0;
     }
 
+    /// @dev Transfers bid tokens from an address that's not address(this) to address(this)
+    function _pullBidToken(PoolId, address from, uint256 amount) internal virtual {
+        bidToken.transferFrom(from, address(this), amount);
+    }
+
+    /// @dev Transfers bid tokens from address(this) to an address that's not address(this)
+    function _pushBidToken(PoolId, address to, uint256 amount) internal virtual {
+        bidToken.transfer(to, amount);
+    }
+
     /// @dev Validates a bid payload, e.g. ensure the swap fee is below a certain threshold
     function _payloadIsValid(PoolId id, bytes7 payload) internal view virtual returns (bool) {
         //TODO
@@ -193,9 +210,9 @@ contract AMAMM is IAmAmm {
         return true;
     }
 
+    function setEnabled(PoolId id, bool value) external {
+        enabled[id] = value;
+    }
+
     function claimFees(Currency currency, address recipient) external override returns (uint256 fees) {}
-
-    function _pullBidToken(PoolId id, address from, uint256 amount) internal virtual {}
-
-    function _pushBidToken(PoolId id, address to, uint256 amount) internal virtual {}
 }
