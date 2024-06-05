@@ -20,6 +20,7 @@ Miro: [Miro board](https://miro.com/app/board/uXjVKDNc1nI=/)
 - [x] beforeSwap hook to update dynamic fee
 - [x] update Bid to have swapFee so that user could bid and set swapFee together
 - [x] hook initialisation to set contract address for AMAMM
+- [ ] user firstly needs to add liquidity to obtain the pool token, then can use it as rent to bid
 - [ ] "The current highest bidder in the ongoing auction, known as the manager, pays rent to liquidity providers." - need to send rent from AMAMM back to LP
 - [ ] Integration test to deploy AMAMM first, then deploy hook contract and initialise with AMAMM address with all the test scenarios
 - [ ] Record the video and prepare it for submission.
