@@ -39,10 +39,4 @@ interface IAmAmm {
     /// @param id The pool id
     /// @param _amount The amount to withdraw, must be a multiple of rent and leave D_top / R_top >= K
     function withdrawBalance(PoolId id, uint128 _amount) external returns (uint128);
-
-    /// @notice Claims the accrued fees of msg.sender.
-    /// @param currency The currency of the fees
-    /// @param recipient The address of the recipient
-    /// @return fees The amount of fees claimed
-    function claimFees(Currency currency, address recipient) external returns (uint256 fees);
 }

@@ -61,13 +61,11 @@ contract AMAMM is IAmAmm {
     /// Storage variables
     /// -----------------------------------------------------------------------
 
+    mapping(PoolId id => bool) public enabled;
+    mapping(PoolId id => address) internal _bidToken;
     mapping(PoolId id => uint40) internal _lastUpdatedEpoch;
     mapping(address deposits => uint256) public _userBalance;
-    mapping(Currency currency => uint256) internal _totalFees;
     mapping(PoolId id => mapping(uint40 => Bid)) public poolEpochManager;
-    mapping(address manager => mapping(Currency currency => uint256)) internal _fees;
-    mapping(PoolId id => address) internal _bidToken;
-    mapping(PoolId id => bool) public enabled;
 
     /// -----------------------------------------------------------------------
     /// Getter actions
@@ -138,8 +136,8 @@ contract AMAMM is IAmAmm {
             _userBalance[depositor] += amount;
         }
     }
-    /// @inheritdoc IAmAmm
 
+    /// @inheritdoc IAmAmm
     function withdrawBalance(PoolId id, uint128 _amount) external virtual override isAmAmm(id) returns (uint128) {
         address msgSender = LibMulticaller.senderOrSigner();
 
@@ -206,13 +204,10 @@ contract AMAMM is IAmAmm {
 
     /// @dev Returns whether the am-AMM is enabled for a given pool
     function _amAmmEnabled(PoolId id) internal view virtual returns (bool) {
-        //TODO
-        return true;
+        return enabled[id];
     }
 
     function setEnabled(PoolId id, bool value) external {
         enabled[id] = value;
     }
-
-    function claimFees(Currency currency, address recipient) external override returns (uint256 fees) {}
 }
