@@ -12,21 +12,15 @@ import "./ERC20Mock.sol";
 contract AmAmmMock is AMAMM {
     using CurrencyLibrary for Currency;
 
-    ERC20Mock public immutable bidToken;
     ERC20Mock public immutable feeToken0;
     ERC20Mock public immutable feeToken1;
 
-    mapping(PoolId id => bool) public enabled;
     mapping(PoolId id => uint24) public maxSwapFee;
 
     constructor(ERC20Mock _bidToken, ERC20Mock _feeToken0, ERC20Mock _feeToken1) {
         bidToken = _bidToken;
         feeToken0 = _feeToken0;
         feeToken1 = _feeToken1;
-    }
-
-    function setEnabled(PoolId id, bool value) external {
-        enabled[id] = value;
     }
 
     function setMaxSwapFee(PoolId id, uint24 value) external {

@@ -17,9 +17,22 @@ import {FixedPointMathLib} from "../lib/solady/src/utils/FixedPointMathLib.sol";
 import {PoolKey} from "v4-core/types/PoolKey.sol";
 import {BalanceDelta} from "v4-core/types/BalanceDelta.sol";
 import {IHooks} from "v4-core/interfaces/IHooks.sol";
+import "../test/mocks/ERC20Mock.sol";
 
 contract AMAMM is IAmAmm {
     constructor() public {}
+
+    // Modifier to check if the sender is the owner
+    modifier isAmAmm(PoolId id) {
+        require(_amAmmEnabled(id), "This Pool is not AMAMM enabled");
+        _;
+    }
+
+    // TODO: set this value to the ePoch swap fee
+    uint128 public constant SWAP_FEE_BIPS = 123; // 123/10000 = 1.23%
+    uint128 public constant TOTAL_BIPS = 10000;
+
+    ERC20Mock public immutable bidToken;
 
     /// -----------------------------------------------------------------------
     /// Library usage
@@ -48,27 +61,26 @@ contract AMAMM is IAmAmm {
     /// Storage variables
     /// -----------------------------------------------------------------------
 
+    mapping(PoolId id => bool) public enabled;
+    mapping(PoolId id => address) internal _bidToken;
     mapping(PoolId id => uint40) internal _lastUpdatedEpoch;
     mapping(address deposits => uint256) public _userBalance;
-    mapping(Currency currency => uint256) internal _totalFees;
     mapping(PoolId id => mapping(uint40 => Bid)) public poolEpochManager;
-    mapping(address manager => mapping(Currency currency => uint256)) internal _fees;
-    mapping(PoolId id => address) internal _bidToken;
 
     /// -----------------------------------------------------------------------
     /// Getter actions
     /// -----------------------------------------------------------------------
 
-    function getCurrentManager(PoolId id, uint40 epoch) public view returns (Bid memory) {
-        return poolEpochManager[id][epoch];
-    }
-
-    function getManager(PoolId id, uint40 epoch) public override view virtual returns (Bid memory) {
-        //@dev getEpoch(id, epoch) shoudl always be smaller than lastupdated
-        if (_lastUpdatedEpoch[id] - _getEpoch(id, epoch) <= K(id)) {
-            return poolEpochManager[id][_lastUpdatedEpoch[id]];
+    function getLastManager(PoolId id, uint40 targetEpoch) public view returns (Bid memory) {
+        if (_lastUpdatedEpoch[id] > targetEpoch) {
+            if (_lastUpdatedEpoch[id] - targetEpoch <= K(id)) return poolEpochManager[id][_lastUpdatedEpoch[id]];
+            else return poolEpochManager[id][targetEpoch];
         } else {
-            return poolEpochManager[id][epoch];
+            if (targetEpoch - _lastUpdatedEpoch[id] <= K(id)) {
+                return poolEpochManager[id][_lastUpdatedEpoch[id]];
+            } else {
+                return poolEpochManager[id][targetEpoch];
+            }
         }
     }
 
@@ -76,33 +88,25 @@ contract AMAMM is IAmAmm {
     /// Bidder actions
     /// -----------------------------------------------------------------------
     /// @inheritdoc IAmAmm
-    function bid(PoolId id, bytes7 payload, uint128 rent, uint40 _epoch) external virtual override {
-        /// -----------------------------------------------------------------------
-        /// Validation
-        /// -----------------------------------------------------------------------
-
+    function bid(PoolId id, bytes7 payload, uint128 rent, uint40 _epoch) external virtual override isAmAmm(id) {
         address msgSender = LibMulticaller.senderOrSigner();
-        if (_epoch > _getEpoch(id, block.timestamp) + K(id)) {
+
+        if (_epoch > _getEpoch(id, block.timestamp) + K(id) || _epoch <= _getEpoch(id, block.timestamp)) {
             revert AmAmm__BidOutOfBounds();
         }
 
-        uint128 deposit = depositToken(id, msgSender, rent);
+        depositToken(id, msgSender, rent);
 
-        if (
-            _epoch <= _getEpoch(id, block.timestamp)
-                || rent <= poolEpochManager[id][_epoch].rent.mulWad(MIN_BID_MULTIPLIER(id)) || deposit < rent * K(id)
-                || !_payloadIsValid(id, payload)
-        ) {
+        Bid memory prevWinner = getLastManager(id, _epoch);
+
+        if (rent <= prevWinner.rent.mulWad(MIN_BID_MULTIPLIER(id)) || !_payloadIsValid(id, payload)) {
             revert AmAmm__InvalidBid();
         }
 
-        if (_lastUpdatedEpoch[id] > _getEpoch(id, block.timestamp)) {
-            Bid memory prevWinner = getManager(id, _epoch);
-
-            if (prevWinner.rent < rent && prevWinner.rent != 0) {
+        if (prevWinner.rent != 0) {
+            if (prevWinner.rent < rent && _lastUpdatedEpoch[id] <= _epoch) {
                 //Userp Top Bidder and only allow bidder to own N epochs instead of K epochs (N < K)
-                _userBalance[poolEpochManager[id][_epoch].bidder] += _getRefund(id, _lastUpdatedEpoch[id], _epoch); //Refund losing bidder
-
+                _userBalance[prevWinner.bidder] += _getRefund(id, _lastUpdatedEpoch[id], _epoch); //Refund losing bidder
                 poolEpochManager[id][_epoch] = Bid({bidder: msgSender, payload: payload, rent: rent});
 
                 _userBalance[msgSender] -= _getDeposit(id, _epoch);
@@ -112,36 +116,28 @@ contract AMAMM is IAmAmm {
 
             _userBalance[msgSender] -= _getDeposit(id, _epoch);
         }
-
         _updateLastUpdatedEpoch(id, _epoch);
     }
 
-    function depositToken(PoolId id, address depositor, uint128 rent) internal returns (uint128) {
+    function depositToken(PoolId id, address depositor, uint128 rent) internal {
         uint128 amount = uint128(rent * K(id));
 
-        if (_userBalance[depositor] >= amount) {
-            uint128 remainderAmount = uint128(_userBalance[depositor] - amount);
+        if (_userBalance[depositor] < amount) {
+            uint128 remainderAmount = uint128(amount - _userBalance[depositor]);
             _pullBidToken(id, depositor, remainderAmount);
             _userBalance[depositor] += remainderAmount;
-        } else {
-            _pullBidToken(id, depositor, amount);
-            _userBalance[depositor] += amount;
         }
-
-        return amount;
     }
 
     /// @inheritdoc IAmAmm
-    function withdrawBalance(PoolId id, uint128 _amount) external virtual override returns (uint128) {
+    function withdrawBalance(PoolId id, uint128 _amount) external virtual override isAmAmm(id) returns (uint128) {
         address msgSender = LibMulticaller.senderOrSigner();
 
-        if (!_amAmmEnabled(id) || _userBalance[msgSender] < _amount) {
+        if (_userBalance[msgSender] < _amount) {
             revert AmAmm__InvalidBid();
         }
 
-        unchecked {
-            _userBalance[msgSender] -= _amount;
-        }
+        _userBalance[msgSender] -= _amount;
         _pushBidToken(id, msgSender, _amount);
 
         return _amount;
@@ -182,6 +178,16 @@ contract AMAMM is IAmAmm {
         return 0;
     }
 
+    /// @dev Transfers bid tokens from an address that's not address(this) to address(this)
+    function _pullBidToken(PoolId, address from, uint256 amount) internal virtual {
+        bidToken.transferFrom(from, address(this), amount);
+    }
+
+    /// @dev Transfers bid tokens from address(this) to an address that's not address(this)
+    function _pushBidToken(PoolId, address to, uint256 amount) internal virtual {
+        bidToken.transfer(to, amount);
+    }
+
     /// @dev Validates a bid payload, e.g. ensure the swap fee is below a certain threshold
     function _payloadIsValid(PoolId id, bytes7 payload) internal view virtual returns (bool) {
         //TODO
@@ -190,13 +196,10 @@ contract AMAMM is IAmAmm {
 
     /// @dev Returns whether the am-AMM is enabled for a given pool
     function _amAmmEnabled(PoolId id) internal view virtual returns (bool) {
-        //TODO
-        return true;
+        return enabled[id];
     }
 
-    function claimFees(Currency currency, address recipient) external override returns (uint256 fees) {}
-
-    function _pullBidToken(PoolId id, address from, uint256 amount) internal virtual {}
-
-    function _pushBidToken(PoolId id, address to, uint256 amount) internal virtual {}
+    function setEnabled(PoolId id, bool value) external {
+        enabled[id] = value;
+    }
 }
