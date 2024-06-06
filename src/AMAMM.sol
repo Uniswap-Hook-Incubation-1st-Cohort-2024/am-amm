@@ -71,10 +71,6 @@ contract AMAMM is IAmAmm {
     /// Getter actions
     /// -----------------------------------------------------------------------
 
-    function getCurrentManager(PoolId id, uint40 epoch) public view returns (Bid memory) {
-        return poolEpochManager[id][epoch];
-    }
-
     function getLastManager(PoolId id, uint40 targetEpoch) public view returns (Bid memory) {
         if (_lastUpdatedEpoch[id] > targetEpoch) {
             if (_lastUpdatedEpoch[id] - targetEpoch <= K(id)) return poolEpochManager[id][_lastUpdatedEpoch[id]];

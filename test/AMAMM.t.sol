@@ -205,9 +205,7 @@ contract AmAmmTest is Test {
         amAmm.bid(POOL_0, _swapFeeToPayload(0.01e6), 1e18, 26); // Bid with reused balance
         vm.stopPrank();
 
-        assertEq(
-            amAmm.getCurrentManager(POOL_0, 26).bidder, user0, "Ensure user0 is winning bidder with reused balance"
-        );
+        assertEq(amAmm.getLastManager(POOL_0, 26).bidder, user0, "Ensure user0 is winning bidder with reused balance");
     }
 
     // Test if lower bids can be refunded
