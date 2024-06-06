@@ -71,6 +71,10 @@ contract AMAMM is IAmAmm {
     /// Getter actions
     /// -----------------------------------------------------------------------
 
+    function getCurrentManager(PoolId id, uint40 epoch) public view returns (Bid memory) {
+        return poolEpochManager[id][epoch];
+    }
+
     function getLastManager(PoolId id, uint40 targetEpoch) public view returns (Bid memory) {
         if (_lastUpdatedEpoch[id] > targetEpoch) {
             if (_lastUpdatedEpoch[id] - targetEpoch <= K(id)) return poolEpochManager[id][_lastUpdatedEpoch[id]];
@@ -89,27 +93,22 @@ contract AMAMM is IAmAmm {
     /// -----------------------------------------------------------------------
     /// @inheritdoc IAmAmm
     function bid(PoolId id, bytes7 payload, uint128 rent, uint40 _epoch) external virtual override isAmAmm(id) {
-        /// -----------------------------------------------------------------------
-        /// Validation
-        /// -----------------------------------------------------------------------
-
         address msgSender = LibMulticaller.senderOrSigner();
-        if (_epoch > _getEpoch(id, block.timestamp) + K(id)) {
+
+        if (_epoch > _getEpoch(id, block.timestamp) + K(id) || _epoch <= _getEpoch(id, block.timestamp)) {
             revert AmAmm__BidOutOfBounds();
         }
 
         depositToken(id, msgSender, rent);
+
         Bid memory prevWinner = getLastManager(id, _epoch);
 
-        if (
-            _epoch <= _getEpoch(id, block.timestamp) || rent <= prevWinner.rent.mulWad(MIN_BID_MULTIPLIER(id))
-                || !_payloadIsValid(id, payload)
-        ) {
+        if (rent <= prevWinner.rent.mulWad(MIN_BID_MULTIPLIER(id)) || !_payloadIsValid(id, payload)) {
             revert AmAmm__InvalidBid();
         }
 
         if (prevWinner.rent != 0) {
-            if (prevWinner.rent < rent) {
+            if (prevWinner.rent < rent && _lastUpdatedEpoch[id] <= _epoch) {
                 //Userp Top Bidder and only allow bidder to own N epochs instead of K epochs (N < K)
                 _userBalance[prevWinner.bidder] += _getRefund(id, _lastUpdatedEpoch[id], _epoch); //Refund losing bidder
                 poolEpochManager[id][_epoch] = Bid({bidder: msgSender, payload: payload, rent: rent});
@@ -127,13 +126,10 @@ contract AMAMM is IAmAmm {
     function depositToken(PoolId id, address depositor, uint128 rent) internal {
         uint128 amount = uint128(rent * K(id));
 
-        if (_userBalance[depositor] >= amount) {
-            uint128 remainderAmount = uint128(_userBalance[depositor] - amount);
+        if (_userBalance[depositor] < amount) {
+            uint128 remainderAmount = uint128(amount - _userBalance[depositor]);
             _pullBidToken(id, depositor, remainderAmount);
             _userBalance[depositor] += remainderAmount;
-        } else {
-            _pullBidToken(id, depositor, amount);
-            _userBalance[depositor] += amount;
         }
     }
 
