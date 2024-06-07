@@ -76,7 +76,7 @@ contract AMAMMHOOK is BaseHook {
         poolManagerOnly
         returns (bytes4, BeforeSwapDelta, uint24)
     {
-        IAmAmm.Bid memory _bid = _getManager(key.toId());
+        IAmAmm.Bid memory _bid = _getLastManager(key.toId());
         uint24 fee = _getFee(_bid);
         console.log("fee: ", fee);
         poolManager.updateDynamicLPFee(key, fee);
@@ -98,7 +98,7 @@ contract AMAMMHOOK is BaseHook {
         // if fee is on output, get the absolute output amount
         if (swapAmount < 0) swapAmount = -swapAmount;
 
-        IAmAmm.Bid memory _bid = _getManager(key.toId());
+        IAmAmm.Bid memory _bid = _getLastManager(key.toId());
         uint24 fee = _getFee(_bid);
         address bidder = _bid.bidder;
         uint128 rent = _bid.rent;
@@ -114,8 +114,8 @@ contract AMAMMHOOK is BaseHook {
         return (IHooks.afterSwap.selector, feeAmount.toInt128());
     }
 
-    function _getManager(PoolId poolid) internal returns (IAmAmm.Bid memory) {
-        return AMAMM.getManager(poolid, AMAMM._getEpoch(poolid, block.timestamp));
+    function _getLastManager(PoolId poolid) internal returns (IAmAmm.Bid memory) {
+        return AMAMM.getLastManager(poolid, AMAMM._getEpoch(poolid, block.timestamp));
     }
 
     function _getFee(IAmAmm.Bid memory _bid) internal view returns (uint24) {
