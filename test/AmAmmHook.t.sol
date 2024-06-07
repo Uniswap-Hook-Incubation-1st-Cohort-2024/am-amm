@@ -22,6 +22,7 @@ contract AMAMMHOOKTest is Test, Deployers {
     // using CurrencyLibrary for Currency;
 
     PoolId constant POOL_0 = PoolId.wrap(bytes32(0));
+    PoolId POOL_1;
 
     AMAMMHOOK hook;
     AmAmmMock amAmm;
@@ -33,6 +34,7 @@ contract AMAMMHOOKTest is Test, Deployers {
     uint128 internal constant K = 24; // 24 windows (hours)
     uint256 internal constant EPOCH_SIZE = 1 hours;
     uint256 internal constant MIN_BID_MULTIPLIER = 1.1e18; // 10%
+
     function setUp() public {
         // Deploy AMAMM
 
@@ -48,17 +50,15 @@ contract AMAMMHOOKTest is Test, Deployers {
 
         address hookAddress = address(
             uint160(
-                Hooks.BEFORE_INITIALIZE_FLAG |
-                Hooks.AFTER_SWAP_FLAG |
-                Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG |
-                Hooks.BEFORE_SWAP_FLAG
+                Hooks.BEFORE_INITIALIZE_FLAG | Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG
+                    | Hooks.BEFORE_SWAP_FLAG
             )
         );
         deployCodeTo("AMAMMHOOK.sol", abi.encode(manager, address(amAmm), amAmm.bidToken()), hookAddress);
         hook = AMAMMHOOK(hookAddress);
 
         // key = PoolKey(currency0, currency1, 3000, 60, limitOrder);
-        (key, ) = initPoolAndAddLiquidity(
+        (key,) = initPoolAndAddLiquidity(
             currency0,
             currency1,
             hook,
@@ -66,6 +66,12 @@ contract AMAMMHOOKTest is Test, Deployers {
             SQRT_PRICE_1_1,
             ZERO_BYTES
         );
+
+        POOL_1 = key.toId();
+
+        amAmm.bidToken().approve(address(amAmm), type(uint256).max);
+        amAmm.setEnabled(POOL_1, true);
+        amAmm.setMaxSwapFee(POOL_1, 0.1e6);
     }
 
     function test_swap_exactInput_zeroForOne_withNoFee() public {
@@ -99,16 +105,8 @@ contract AMAMMHOOKTest is Test, Deployers {
         // input is 1000 for output of 999 with this much liquidity available
         // plus a fee of 0
         // It proves that the swap fee has been changed
-        assertEq(
-            currency0.balanceOf(address(this)),
-            balanceBefore0 - amountToSwap,
-            "amount 0"
-        );
-        assertEq(
-            currency1.balanceOf(address(this)),
-            balanceBefore1 + 999,
-            "amount 1"
-        );
+        assertEq(currency0.balanceOf(address(this)), balanceBefore0 - amountToSwap, "amount 0");
+        assertEq(currency1.balanceOf(address(this)), balanceBefore1 + 999, "amount 1");
         // assertEq(
         //     currency1.balanceOf(address(this)),
         //     balanceBefore1 + 999,
@@ -124,10 +122,10 @@ contract AMAMMHOOKTest is Test, Deployers {
         vm.startPrank(user0);
         amAmm.bidToken().approve(address(amAmm), K * 100e18);
         amAmm.bidToken().approve(address(hook), K * 100e18);
-        amAmm.bid(POOL_0, _swapFeeToPayload(123), 1e18, 1);
+        amAmm.bid(POOL_1, _swapFeeToPayload(123), 1e18, 1);
         vm.stopPrank();
 
-        assertEq(amAmm._getDeposit(POOL_0, 1), K * 1e18, "Bid Promoted to Top Bid");
+        assertEq(amAmm._getDeposit(POOL_1, 1), K * 1e18, "Bid Promoted to Top Bid");
 
         skip(10800); //Enter Epoch 3
 
@@ -143,24 +141,13 @@ contract AMAMMHOOKTest is Test, Deployers {
 
         // input is 1000 for output of 998 with this much liquidity available
         // plus a fee of 1.23% on unspecified (output) => (998*123)/10000 = 12
-        assertEq(
-            currency0.balanceOf(address(this)),
-            balanceBefore0 - amountToSwap,
-            "amount 0"
-        );
-        assertEq(
-            currency1.balanceOf(address(this)),
-            balanceBefore1 + (998 - 12),
-            "amount 1"
-        );
-        assertEq(
-            amAmm.bidToken().balanceOf(address(amAmm)),
-            rentBefore - 1e18,
-            "amount 2"
-        );
+        assertEq(currency0.balanceOf(address(this)), balanceBefore0 - amountToSwap, "amount 0");
+        assertEq(currency1.balanceOf(address(this)), balanceBefore1 + (998 - 12), "amount 1");
+        assertEq(amAmm.bidToken().balanceOf(address(amAmm)), rentBefore - 1e18, "amount 2");
     }
 
     function _swapFeeToPayload(uint24 swapFee) internal pure returns (bytes7) {
         return bytes7(bytes3(swapFee));
     }
 }
+
