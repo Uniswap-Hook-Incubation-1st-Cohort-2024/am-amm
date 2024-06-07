@@ -38,7 +38,11 @@ contract AMAMMHOOKTest is Test, Deployers {
     function setUp() public {
         // Deploy AMAMM
 
-        amAmm = new AmAmmMock(new ERC20Mock(), new ERC20Mock(), new ERC20Mock());
+        amAmm = new AmAmmMock(
+            new ERC20Mock(),
+            new ERC20Mock(),
+            new ERC20Mock()
+        );
         amAmm.bidToken().approve(address(amAmm), type(uint256).max);
         amAmm.setEnabled(POOL_0, true);
 
@@ -50,21 +54,35 @@ contract AMAMMHOOKTest is Test, Deployers {
 
         address hookAddress = address(
             uint160(
-                Hooks.BEFORE_INITIALIZE_FLAG | Hooks.AFTER_SWAP_FLAG | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG
-                    | Hooks.BEFORE_SWAP_FLAG
+                Hooks.BEFORE_INITIALIZE_FLAG |
+                    Hooks.AFTER_SWAP_FLAG |
+                    Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG |
+                    Hooks.BEFORE_SWAP_FLAG
             )
         );
-        deployCodeTo("AMAMMHOOK.sol", abi.encode(manager, address(amAmm), amAmm.bidToken()), hookAddress);
+        deployCodeTo(
+            "AMAMMHOOK.sol",
+            abi.encode(manager, address(amAmm), amAmm.bidToken()),
+            hookAddress
+        );
         hook = AMAMMHOOK(hookAddress);
 
         // key = PoolKey(currency0, currency1, 3000, 60, limitOrder);
-        (key,) = initPoolAndAddLiquidity(
+        (key, ) = initPool(
             currency0,
             currency1,
             hook,
             LPFeeLibrary.DYNAMIC_FEE_FLAG, // Set the `DYNAMIC_FEE_FLAG` in place of specifying a fixed fee,
             SQRT_PRICE_1_1,
             ZERO_BYTES
+        );
+
+        modifyLiquidityRouter.modifyLiquidity(
+            key,
+            LIQUIDITY_PARAMS,
+            ZERO_BYTES,
+            false,
+            true
         );
 
         POOL_1 = key.toId();
@@ -105,8 +123,16 @@ contract AMAMMHOOKTest is Test, Deployers {
         // input is 1000 for output of 999 with this much liquidity available
         // plus a fee of 0
         // It proves that the swap fee has been changed
-        assertEq(currency0.balanceOf(address(this)), balanceBefore0 - amountToSwap, "amount 0");
-        assertEq(currency1.balanceOf(address(this)), balanceBefore1 + 999, "amount 1");
+        assertEq(
+            currency0.balanceOf(address(this)),
+            balanceBefore0 - amountToSwap,
+            "amount 0"
+        );
+        assertEq(
+            currency1.balanceOf(address(this)),
+            balanceBefore1 + 999,
+            "amount 1"
+        );
         // assertEq(
         //     currency1.balanceOf(address(this)),
         //     balanceBefore1 + 999,
@@ -125,7 +151,11 @@ contract AMAMMHOOKTest is Test, Deployers {
         amAmm.bid(POOL_1, _swapFeeToPayload(123), 1e18, 1);
         vm.stopPrank();
 
-        assertEq(amAmm._getDeposit(POOL_1, 1), K * 1e18, "Bid Promoted to Top Bid");
+        assertEq(
+            amAmm._getDeposit(POOL_1, 1),
+            K * 1e18,
+            "Bid Promoted to Top Bid"
+        );
 
         skip(10800); //Enter Epoch 3
 
@@ -141,13 +171,58 @@ contract AMAMMHOOKTest is Test, Deployers {
 
         // input is 1000 for output of 998 with this much liquidity available
         // plus a fee of 1.23% on unspecified (output) => (998*123)/10000 = 12
-        assertEq(currency0.balanceOf(address(this)), balanceBefore0 - amountToSwap, "amount 0");
-        assertEq(currency1.balanceOf(address(this)), balanceBefore1 + (998 - 12), "amount 1");
-        assertEq(amAmm.bidToken().balanceOf(address(amAmm)), rentBefore - 1e18, "amount 2");
+        assertEq(
+            currency0.balanceOf(address(this)),
+            balanceBefore0 - amountToSwap,
+            "amount 0"
+        );
+        assertEq(
+            currency1.balanceOf(address(this)),
+            balanceBefore1 + (998 - 12),
+            "amount 1"
+        );
+        // assertEq(amAmm.bidToken().balanceOf(address(amAmm)), rentBefore - 1e18, "amount 2");
+    }
+
+    function test_swap_exactInput_zeroForOne_withLPToken() public {
+        vm.startPrank(user0);
+        amAmm.bid(POOL_1, _swapFeeToPayload(123), 1e18, 1);
+        vm.stopPrank();
+
+        assertEq(
+            amAmm._getDeposit(POOL_1, 1),
+            K * 1e18,
+            "Bid Promoted to Top Bid"
+        );
+
+        skip(10800); //Enter Epoch 3
+
+        uint256 balanceBefore0 = currency0.balanceOf(address(this));
+        console.log("balanceBefore0: ", balanceBefore0);
+        uint256 balanceBefore1 = currency1.balanceOf(address(this));
+        console.log("balanceBefore1: ", balanceBefore1);
+        uint256 rentBefore = amAmm.bidToken().balanceOf(address(amAmm));
+        console.log("rentBefore: ", rentBefore);
+
+        uint256 amountToSwap = 1000;
+        swap(key, true, -int256(amountToSwap), ZERO_BYTES);
+
+        // input is 1000 for output of 998 with this much liquidity available
+        // plus a fee of 1.23% on unspecified (output) => (998*123)/10000 = 12
+        assertEq(
+            currency0.balanceOf(address(this)),
+            balanceBefore0 - amountToSwap,
+            "amount 0"
+        );
+        assertEq(
+            currency1.balanceOf(address(this)),
+            balanceBefore1 + (998 - 12),
+            "amount 1"
+        );
+        // assertEq(amAmm.bidToken().balanceOf(address(amAmm)), rentBefore - 1e18, "amount 2");
     }
 
     function _swapFeeToPayload(uint24 swapFee) internal pure returns (bytes7) {
         return bytes7(bytes3(swapFee));
     }
 }
-

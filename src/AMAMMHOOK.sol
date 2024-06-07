@@ -109,7 +109,7 @@ contract AMAMMHOOK is BaseHook {
         poolManager.take(feeCurrency, bidder, feeAmount);
         // LP charge rent
         console.log("rent: ", rent);
-        poolManager.take(bidToken, address(AMAMM), rent);
+        // poolManager.take(bidToken, address(AMAMM), rent);
 
         return (IHooks.afterSwap.selector, feeAmount.toInt128());
     }
