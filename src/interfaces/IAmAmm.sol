@@ -39,4 +39,14 @@ interface IAmAmm {
     /// @param id The pool id
     /// @param _amount The amount to withdraw, must be a multiple of rent and leave D_top / R_top >= K
     function withdrawBalance(PoolId id, uint128 _amount) external returns (uint128);
+
+    /// @notice Return bid from the last manager
+    /// @param id The pool id
+    /// @param targetEpoch The epoch to target
+    function getLastManager(PoolId id, uint40 targetEpoch) external returns (Bid memory);
+
+    /// @notice Return current epoch.
+    /// @param id The pool id
+    /// @param timestamp The current timestamp
+    function _getEpoch(PoolId id, uint256 timestamp) external returns (uint40);
 }
