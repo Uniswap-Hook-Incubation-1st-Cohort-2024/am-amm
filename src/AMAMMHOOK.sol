@@ -29,7 +29,7 @@ contract AMAMMHOOK is BaseHook, AMAMM {
     using PoolIdLibrary for PoolKey;
     using LPFeeLibrary for uint24;
     using StateLibrary for IPoolManager;
-    
+
     uint16 internal constant MINIMUM_LIQUIDITY = 1000;
 
     error MustUseDynamicFee();
@@ -44,9 +44,7 @@ contract AMAMMHOOK is BaseHook, AMAMM {
     mapping(PoolId => PoolInfo) public poolInfo;
     mapping(PoolId id => uint40) internal _lastChargedEpoch;
 
-    constructor(IPoolManager poolManager)
-        BaseHook(poolManager)
-    {}
+    constructor(IPoolManager poolManager) BaseHook(poolManager) {}
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
@@ -67,12 +65,11 @@ contract AMAMMHOOK is BaseHook, AMAMM {
         });
     }
 
-    function beforeInitialize(
-        address,
-        PoolKey calldata key,
-        uint160,
-        bytes calldata
-    ) external override returns (bytes4) {
+    function beforeInitialize(address, PoolKey calldata key, uint160, bytes calldata)
+        external
+        override
+        returns (bytes4)
+    {
         PoolId poolId = key.toId();
 
         string memory tokenSymbol = string(
@@ -87,7 +84,6 @@ contract AMAMMHOOK is BaseHook, AMAMM {
             )
         );
         address poolToken = address(new UniswapV4ERC20(tokenSymbol, tokenSymbol));
-        console.log("poolToken: ", poolToken);
 
         _setBidToken(poolToken);
 
@@ -103,26 +99,23 @@ contract AMAMMHOOK is BaseHook, AMAMM {
         address,
         PoolKey calldata key,
         IPoolManager.ModifyLiquidityParams calldata params,
-        BalanceDelta delta,
+        BalanceDelta,
         bytes calldata hookData
     ) external override poolManagerOnly returns (bytes4, BalanceDelta) {
         PoolId poolId = key.toId();
 
         address payer = abi.decode(hookData, (address));
-        console.log("payer: ", payer);
         PoolInfo storage pool = poolInfo[poolId];
 
-        int liquidity = params.liquidityDelta;
-        console.log("liquidity: ");
-        console.logInt(liquidity);
+        int256 liquidity = params.liquidityDelta;
 
-        UniswapV4ERC20(pool.liquidityToken).mint(payer, uint(liquidity));
+        UniswapV4ERC20(pool.liquidityToken).mint(payer, uint256(liquidity));
 
         return (this.afterAddLiquidity.selector, BalanceDeltaLibrary.ZERO_DELTA);
     }
 
     function afterRemoveLiquidity(
-        address sender,
+        address,
         PoolKey calldata key,
         IPoolManager.ModifyLiquidityParams calldata params,
         BalanceDelta,
@@ -131,21 +124,18 @@ contract AMAMMHOOK is BaseHook, AMAMM {
         PoolId poolId = key.toId();
 
         address payer = abi.decode(hookData, (address));
-        console.log("payer: ", payer);
-        UniswapV4ERC20 erc20 = UniswapV4ERC20(poolInfo[poolId].liquidityToken);
 
         uint128 liquidity = poolManager.getPosition(
             key.toId(), address(this), params.tickLower, params.tickUpper, params.salt
         ).liquidity;
 
         PoolInfo storage pool = poolInfo[poolId];
-        UniswapV4ERC20(pool.liquidityToken).burn(payer, uint(liquidity));
+        UniswapV4ERC20(pool.liquidityToken).burn(payer, uint256(liquidity));
 
         return (this.afterRemoveLiquidity.selector, BalanceDeltaLibrary.ZERO_DELTA);
     }
 
-
-    function beforeSwap(address sender, PoolKey calldata key, IPoolManager.SwapParams calldata, bytes calldata)
+    function beforeSwap(address, PoolKey calldata key, IPoolManager.SwapParams calldata, bytes calldata)
         external
         override
         poolManagerOnly
@@ -153,7 +143,6 @@ contract AMAMMHOOK is BaseHook, AMAMM {
     {
         IAmAmm.Bid memory _bid = _getLastManager(key.toId());
         uint24 fee = _getFee(_bid);
-        console.log("fee: ", fee);
         poolManager.updateDynamicLPFee(key, fee);
 
         return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, 0);
@@ -181,13 +170,11 @@ contract AMAMMHOOK is BaseHook, AMAMM {
         uint128 rent = _bid.rent;
         uint256 feeAmount = (uint128(swapAmount) * uint128(fee)) / TOTAL_BIPS;
         // manager takes fee
-        console.log("feeAmount: ", feeAmount);
         poolManager.take(feeCurrency, bidder, feeAmount);
         // LP charge rent
-        console.log("rent: ", rent);
-        if(rent > 0) {
+        if (rent > 0) {
             uint40 last = _lastChargedEpoch[poolId];
-            if(last == 0) {
+            if (last == 0) {
                 last = _lastUpdatedEpoch[poolId] - 1; // -1 to charge from the last epoch
             }
             if (currentEpoch - last <= K(poolId)) {
@@ -197,7 +184,7 @@ contract AMAMMHOOK is BaseHook, AMAMM {
             }
 
             PoolInfo storage pool = poolInfo[poolId];
-            UniswapV4ERC20(pool.liquidityToken).burn(address(this), uint(rent));
+            UniswapV4ERC20(pool.liquidityToken).burn(address(this), uint256(rent));
             _lastChargedEpoch[poolId] = currentEpoch;
         }
         return (IHooks.afterSwap.selector, feeAmount.toInt128());
@@ -211,11 +198,11 @@ contract AMAMMHOOK is BaseHook, AMAMM {
     /// Internal helpers
     /// -----------------------------------------------------------------------
 
-    function _getLastManager(PoolId poolid) internal returns (IAmAmm.Bid memory) {
+    function _getLastManager(PoolId poolid) internal view returns (IAmAmm.Bid memory) {
         return getLastManager(poolid, _getEpoch(poolid, block.timestamp));
     }
 
-    function _getFee(IAmAmm.Bid memory _bid) internal view returns (uint24) {
+    function _getFee(IAmAmm.Bid memory _bid) internal pure returns (uint24) {
         return uint24(bytes3(_bid.payload));
     }
 

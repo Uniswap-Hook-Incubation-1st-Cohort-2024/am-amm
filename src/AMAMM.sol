@@ -60,7 +60,6 @@ contract AMAMM is IAmAmm {
     /// -----------------------------------------------------------------------
 
     mapping(PoolId id => bool) public enabled;
-    mapping(PoolId id => address) internal _bidToken;
     mapping(PoolId id => uint40) internal _lastUpdatedEpoch;
     mapping(address deposits => uint256) public _userBalance;
     mapping(PoolId id => mapping(uint40 => Bid)) public poolEpochManager;
@@ -88,6 +87,8 @@ contract AMAMM is IAmAmm {
     /// @inheritdoc IAmAmm
     function bid(PoolId id, bytes7 payload, uint128 rent, uint40 _epoch) external override isAmAmm(id) {
         address msgSender = LibMulticaller.senderOrSigner();
+
+        console.log("test", msgSender, address(this), address(bidToken));
 
         if (_epoch > _getEpoch(id, block.timestamp) + K(id) || _epoch <= _getEpoch(id, block.timestamp)) {
             revert AmAmm__BidOutOfBounds();
