@@ -167,20 +167,12 @@ contract AMAMM is IAmAmm {
     }
 
     function _getRefund(PoolId id, uint40 _epoch, uint40 _targetEpoch) internal view returns (uint256) {
+        //_lastUpdatedEpoch[id] must always be <= _targetEpoch
         return poolEpochManager[id][_epoch].rent * (_epoch + K(id) - _targetEpoch);
     }
 
     function _updateLastUpdatedEpoch(PoolId id, uint40 _epoch) internal returns (uint40) {
         return _lastUpdatedEpoch[id] = _epoch;
-    }
-
-    function _findUpperManager(PoolId id, uint40 _epoch) internal view returns (uint40) {
-        for (uint40 e = _epoch; e <= _epoch + K(id); e++) {
-            if (poolEpochManager[id][e].rent > 0) {
-                return e;
-            }
-        }
-        return 0;
     }
 
     /// @dev Transfers bid tokens from an address that's not address(this) to address(this)

@@ -186,6 +186,7 @@ contract AMAMMHOOKTest is Test, Deployers {
         assertEq(
             currency1.balanceOf(address(this)),
             // balanceBefore1 + (998 - 12),
+            // TODO: Create a new case that winner and current swapper not the same user
             balanceBefore1 + 998, // since the fee got sent to the winner which is the current user
             "amount 1"
         );
