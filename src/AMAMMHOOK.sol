@@ -18,18 +18,31 @@ import {PoolId, PoolIdLibrary} from "v4-core/types/PoolId.sol";
 import {IAmAmm} from "./interfaces/IAmAmm.sol";
 import {LPFeeLibrary} from "v4-core/libraries/LPFeeLibrary.sol";
 import {console} from "forge-std/console.sol";
+import {UniswapV4ERC20} from "v4-periphery/libraries/UniswapV4ERC20.sol";
+import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
+import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
 
 contract AMAMMHOOK is BaseHook {
     using SafeCast for uint256;
     using PoolIdLibrary for PoolKey;
     using LPFeeLibrary for uint24;
+    using StateLibrary for IPoolManager;
     
     IAmAmm public immutable AMAMM = IAmAmm(AMAMM);
     Currency public immutable bidToken;
+    uint16 internal constant MINIMUM_LIQUIDITY = 1000;
 
     error MustUseDynamicFee();
+    error LiquidityDoesntMeetMinimum();
+
+    struct PoolInfo {
+        bool hasAccruedFees;
+        address liquidityToken;
+    }
 
     uint128 public constant TOTAL_BIPS = 10000;
+    mapping(PoolId => PoolInfo) public poolInfo;
 
     constructor(IPoolManager poolManager, address _AMAMM, Currency _bidToken)
         BaseHook(poolManager)
@@ -43,9 +56,9 @@ contract AMAMMHOOK is BaseHook {
             beforeInitialize: true,
             afterInitialize: false,
             beforeAddLiquidity: false,
-            afterAddLiquidity: false,
+            afterAddLiquidity: true,
             beforeRemoveLiquidity: false,
-            afterRemoveLiquidity: false,
+            afterRemoveLiquidity: true,
             beforeSwap: true,
             afterSwap: true, // Override how swaps are done
             beforeDonate: false,
@@ -62,11 +75,70 @@ contract AMAMMHOOK is BaseHook {
         PoolKey calldata key,
         uint160,
         bytes calldata
-    ) external pure override returns (bytes4) {
+    ) external override returns (bytes4) {
+        PoolId poolId = key.toId();
+
+        string memory tokenSymbol = string(
+            abi.encodePacked(
+                "UniV4",
+                "-",
+                IERC20Metadata(Currency.unwrap(key.currency0)).symbol(),
+                "-",
+                IERC20Metadata(Currency.unwrap(key.currency1)).symbol(),
+                "-",
+                Strings.toString(uint256(key.fee))
+            )
+        );
+        address poolToken = address(new UniswapV4ERC20(tokenSymbol, tokenSymbol));
+
+        poolInfo[poolId] = PoolInfo({hasAccruedFees: false, liquidityToken: poolToken});
+
         // `.isDynamicFee()` function comes from using
         // the `SwapFeeLibrary` for `uint24`
         if (!key.fee.isDynamicFee()) revert MustUseDynamicFee();
         return this.beforeInitialize.selector;
+    }
+
+    function afterAddLiquidity(
+        address,
+        PoolKey calldata key,
+        IPoolManager.ModifyLiquidityParams calldata params,
+        BalanceDelta delta,
+        bytes calldata hookData
+    ) external override poolManagerOnly returns (bytes4, BalanceDelta) {
+        PoolId poolId = key.toId();
+
+        address payer = abi.decode(hookData, (address));
+        console.log("payer: ", payer);
+        PoolInfo storage pool = poolInfo[poolId];
+
+        int liquidity = params.liquidityDelta;
+        console.log("liquidity: ");
+        console.logInt(liquidity);
+
+        UniswapV4ERC20(pool.liquidityToken).mint(payer, uint(liquidity));
+
+        return (this.afterAddLiquidity.selector, BalanceDeltaLibrary.ZERO_DELTA);
+    }
+
+    function afterRemoveLiquidity(
+        address sender,
+        PoolKey calldata key,
+        IPoolManager.ModifyLiquidityParams calldata params,
+        BalanceDelta,
+        bytes calldata
+    ) external override poolManagerOnly returns (bytes4, BalanceDelta) {
+        PoolId poolId = key.toId();
+
+        UniswapV4ERC20 erc20 = UniswapV4ERC20(poolInfo[poolId].liquidityToken);
+
+        uint128 liquidity = poolManager.getPosition(
+            key.toId(), address(this), params.tickLower, params.tickUpper, params.salt
+        ).liquidity;
+
+        erc20.burn(sender, liquidity);
+
+        return (this.afterRemoveLiquidity.selector, BalanceDeltaLibrary.ZERO_DELTA);
     }
 
 
@@ -113,6 +185,14 @@ contract AMAMMHOOK is BaseHook {
 
         return (IHooks.afterSwap.selector, feeAmount.toInt128());
     }
+
+    function getPoolInfo(PoolId poolId) external view returns (PoolInfo memory) {
+        return poolInfo[poolId];
+    }
+
+    /// -----------------------------------------------------------------------
+    /// Internal helpers
+    /// -----------------------------------------------------------------------
 
     function _getLastManager(PoolId poolid) internal returns (IAmAmm.Bid memory) {
         return AMAMM.getLastManager(poolid, AMAMM._getEpoch(poolid, block.timestamp));
