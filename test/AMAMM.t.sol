@@ -28,7 +28,7 @@ contract AmAmmTest is Test {
     AmAmmMock amAmm;
 
     function setUp() public {
-        amAmm = new AmAmmMock(new ERC20Mock(), new ERC20Mock(), new ERC20Mock());
+        amAmm = new AmAmmMock(address(new ERC20Mock()));
         amAmm.bidToken().approve(address(amAmm), type(uint256).max);
         amAmm.setEnabled(POOL_0, true);
 

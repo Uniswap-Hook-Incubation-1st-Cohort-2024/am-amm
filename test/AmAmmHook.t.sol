@@ -26,7 +26,6 @@ contract AMAMMHOOKTest is Test, Deployers {
     PoolId POOL_1;
 
     AMAMMHOOK hook;
-    AmAmmMock amAmm;
 
     address user0 = makeAddr("USER_0");
     address user1 = makeAddr("USER_1");
@@ -34,20 +33,19 @@ contract AMAMMHOOKTest is Test, Deployers {
 
     uint128 internal constant K = 24; // 24 windows (hours)
     uint256 internal constant EPOCH_SIZE = 1 hours;
-    uint256 internal constant MIN_BID_MULTIPLIER = 1.1e18; // 10%
+    address internal constant hookAddress = address(
+        uint160(
+            Hooks.BEFORE_INITIALIZE_FLAG |
+                Hooks.AFTER_SWAP_FLAG |
+                Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG |
+                Hooks.AFTER_ADD_LIQUIDITY_FLAG |
+                Hooks.AFTER_REMOVE_LIQUIDITY_FLAG |
+                Hooks.BEFORE_SWAP_FLAG
+        )
+    );
 
     function setUp() public {
-        // Deploy AMAMM
-
-        amAmm = new AmAmmMock(
-            new ERC20Mock(),
-            new ERC20Mock(),
-            new ERC20Mock()
-        );
-        amAmm.bidToken().approve(address(amAmm), type(uint256).max);
-        amAmm.setEnabled(POOL_0, true);
-
-        amAmm.setMaxSwapFee(POOL_0, 0.1e6);
+        // Deploy hook
 
         // Deploy v4-core
         deployFreshManagerAndRouters();
@@ -65,7 +63,7 @@ contract AMAMMHOOKTest is Test, Deployers {
         );
         deployCodeTo(
             "AMAMMHOOK.sol",
-            abi.encode(manager, address(amAmm), amAmm.bidToken()),
+            abi.encode(manager),
             hookAddress
         );
         hook = AMAMMHOOK(hookAddress);
@@ -90,10 +88,8 @@ contract AMAMMHOOKTest is Test, Deployers {
         console.log("modifyLiquidityRouter: ", address(modifyLiquidityRouter));
 
         POOL_1 = key.toId();
-
-        amAmm.bidToken().approve(address(amAmm), type(uint256).max);
-        amAmm.setEnabled(POOL_1, true);
-        amAmm.setMaxSwapFee(POOL_1, 0.1e6);
+        hook.setEnabled(POOL_1, true);
+        hook.setMaxSwapFee(POOL_1, 0.1e6);
     }
 
     function test_swap_exactInput_zeroForOne_withNoFee() public {
@@ -145,33 +141,38 @@ contract AMAMMHOOKTest is Test, Deployers {
     }
 
     function test_swap_exactInput_zeroForOne_withFee() public {
-        amAmm.bidToken().mint(address(user0), K * 100e18);
-        amAmm.bidToken().mint(address(user1), K * 100e18);
-        amAmm.bidToken().mint(address(user2), K * 100e18);
 
-        vm.startPrank(user0);
-        amAmm.bidToken().approve(address(amAmm), K * 100e18);
-        amAmm.bidToken().approve(address(hook), K * 100e18);
-        amAmm.bid(POOL_1, _swapFeeToPayload(123), 1e18, 1);
-        vm.stopPrank();
-
-        assertEq(
-            amAmm._getDeposit(POOL_1, 1),
-            K * 1e18,
-            "Bid Promoted to Top Bid"
-        );
-
-        skip(10800); //Enter Epoch 3
+        // amAmm.bidToken().approve(address(amAmm), K * 100e18);
+        hook.bidToken().approve(hookAddress, K * 100e18);
+        // amAmm.bidToken().approve(address(hook), K * 100e18);
 
         uint256 balanceBefore0 = currency0.balanceOf(address(this));
         console.log("balanceBefore0: ", balanceBefore0);
         uint256 balanceBefore1 = currency1.balanceOf(address(this));
         console.log("balanceBefore1: ", balanceBefore1);
-        console.log("amamm address: ", address(this));
-        UniswapV4ERC20 bidToken = UniswapV4ERC20(hook.getPoolInfo(POOL_1).liquidityToken);
-        uint256 lpTokenBalance = bidToken.balanceOf(address(this));
-        console.log("LP Token balance: ", lpTokenBalance);
+        console.log("test address: ", address(this));
 
+        UniswapV4ERC20 bidToken = UniswapV4ERC20(hook.getPoolInfo(POOL_1).liquidityToken);
+        uint256 lpTokenBefore = bidToken.balanceOf(hookAddress);
+        console.log("LP Token before: ", lpTokenBefore);
+
+        uint128 rent = 1;
+        hook.bid(POOL_1, _swapFeeToPayload(123), rent, 1);
+        
+        uint256 lpTokenAfter = bidToken.balanceOf(hookAddress);
+        console.log("LP Token After: ", lpTokenAfter);
+        assertEq(
+            lpTokenBefore + uint256(rent * K),
+            lpTokenAfter,
+            "LP token is token after bid"
+        );
+        assertEq(
+            hook._getDeposit(POOL_1, 1),
+            K * rent,
+            "Bid Promoted to Top Bid"
+        );
+
+        skip(10800); //Enter Epoch 3
         uint256 amountToSwap = 1000;
         swap(key, true, -int256(amountToSwap), ZERO_BYTES);
 
@@ -184,10 +185,17 @@ contract AMAMMHOOKTest is Test, Deployers {
         );
         assertEq(
             currency1.balanceOf(address(this)),
-            balanceBefore1 + (998 - 12),
+            // balanceBefore1 + (998 - 12),
+            balanceBefore1 + 998, // since the fee got sent to the winner which is the current user
             "amount 1"
         );
-        // assertEq(amAmm.bidToken().balanceOf(address(amAmm)), rentBefore - 1e18, "amount 2");
+        lpTokenAfter = bidToken.balanceOf(hookAddress);
+        console.log("LP Token After swap: ", lpTokenAfter);
+        assertEq(
+            lpTokenBefore + uint256(rent * K) - uint256(rent * 3), // 3 epochs of rent paid
+            lpTokenAfter,
+            "LP token is paid after swap"
+        );
     }
 
     function _swapFeeToPayload(uint24 swapFee) internal pure returns (bytes7) {

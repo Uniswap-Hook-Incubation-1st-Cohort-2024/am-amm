@@ -22,15 +22,14 @@ import {UniswapV4ERC20} from "v4-periphery/libraries/UniswapV4ERC20.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
 import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
+import {AMAMM} from "./AMAMM.sol";
 
-contract AMAMMHOOK is BaseHook {
+contract AMAMMHOOK is BaseHook, AMAMM {
     using SafeCast for uint256;
     using PoolIdLibrary for PoolKey;
     using LPFeeLibrary for uint24;
     using StateLibrary for IPoolManager;
     
-    IAmAmm public immutable AMAMM = IAmAmm(AMAMM);
-    Currency public immutable bidToken;
     uint16 internal constant MINIMUM_LIQUIDITY = 1000;
 
     error MustUseDynamicFee();
@@ -43,13 +42,11 @@ contract AMAMMHOOK is BaseHook {
 
     uint128 public constant TOTAL_BIPS = 10000;
     mapping(PoolId => PoolInfo) public poolInfo;
+    mapping(PoolId id => uint40) internal _lastChargedEpoch;
 
-    constructor(IPoolManager poolManager, address _AMAMM, Currency _bidToken)
+    constructor(IPoolManager poolManager)
         BaseHook(poolManager)
-    {
-        AMAMM = IAmAmm(_AMAMM);
-        bidToken = _bidToken;
-    }
+    {}
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
@@ -90,6 +87,9 @@ contract AMAMMHOOK is BaseHook {
             )
         );
         address poolToken = address(new UniswapV4ERC20(tokenSymbol, tokenSymbol));
+        console.log("poolToken: ", poolToken);
+
+        _setBidToken(poolToken);
 
         poolInfo[poolId] = PoolInfo({hasAccruedFees: false, liquidityToken: poolToken});
 
@@ -126,17 +126,20 @@ contract AMAMMHOOK is BaseHook {
         PoolKey calldata key,
         IPoolManager.ModifyLiquidityParams calldata params,
         BalanceDelta,
-        bytes calldata
+        bytes calldata hookData
     ) external override poolManagerOnly returns (bytes4, BalanceDelta) {
         PoolId poolId = key.toId();
 
+        address payer = abi.decode(hookData, (address));
+        console.log("payer: ", payer);
         UniswapV4ERC20 erc20 = UniswapV4ERC20(poolInfo[poolId].liquidityToken);
 
         uint128 liquidity = poolManager.getPosition(
             key.toId(), address(this), params.tickLower, params.tickUpper, params.salt
         ).liquidity;
 
-        erc20.burn(sender, liquidity);
+        PoolInfo storage pool = poolInfo[poolId];
+        UniswapV4ERC20(pool.liquidityToken).burn(payer, uint(liquidity));
 
         return (this.afterRemoveLiquidity.selector, BalanceDeltaLibrary.ZERO_DELTA);
     }
@@ -170,19 +173,33 @@ contract AMAMMHOOK is BaseHook {
         // if fee is on output, get the absolute output amount
         if (swapAmount < 0) swapAmount = -swapAmount;
 
-        IAmAmm.Bid memory _bid = _getLastManager(key.toId());
+        PoolId poolId = key.toId();
+        uint40 currentEpoch = _getEpoch(poolId, block.timestamp);
+        IAmAmm.Bid memory _bid = getLastManager(poolId, currentEpoch);
         uint24 fee = _getFee(_bid);
         address bidder = _bid.bidder;
         uint128 rent = _bid.rent;
-
         uint256 feeAmount = (uint128(swapAmount) * uint128(fee)) / TOTAL_BIPS;
         // manager takes fee
         console.log("feeAmount: ", feeAmount);
         poolManager.take(feeCurrency, bidder, feeAmount);
         // LP charge rent
         console.log("rent: ", rent);
-        // poolManager.take(bidToken, address(AMAMM), rent);
+        if(rent > 0) {
+            uint40 last = _lastChargedEpoch[poolId];
+            if(last == 0) {
+                last = _lastUpdatedEpoch[poolId] - 1; // -1 to charge from the last epoch
+            }
+            if (currentEpoch - last <= K(poolId)) {
+                rent = rent * uint128(currentEpoch - last);
+            } else {
+                rent = rent * uint128(K(poolId));
+            }
 
+            PoolInfo storage pool = poolInfo[poolId];
+            UniswapV4ERC20(pool.liquidityToken).burn(address(this), uint(rent));
+            _lastChargedEpoch[poolId] = currentEpoch;
+        }
         return (IHooks.afterSwap.selector, feeAmount.toInt128());
     }
 
@@ -195,10 +212,14 @@ contract AMAMMHOOK is BaseHook {
     /// -----------------------------------------------------------------------
 
     function _getLastManager(PoolId poolid) internal returns (IAmAmm.Bid memory) {
-        return AMAMM.getLastManager(poolid, AMAMM._getEpoch(poolid, block.timestamp));
+        return getLastManager(poolid, _getEpoch(poolid, block.timestamp));
     }
 
     function _getFee(IAmAmm.Bid memory _bid) internal view returns (uint24) {
         return uint24(bytes3(_bid.payload));
+    }
+
+    function _setBidToken(address _bidToken) internal {
+        bidToken = UniswapV4ERC20(_bidToken);
     }
 }
