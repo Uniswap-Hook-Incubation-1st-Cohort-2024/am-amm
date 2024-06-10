@@ -14,7 +14,7 @@ Slides: https://gamma.app/docs/Introduction-to-Auction-Managed-Automated-Market-
 
 # Tests
 
-![Uploading image.png…]()
+<img width="1156" alt="image" src="https://github.com/Uniswap-Hook-Incubation-1st-Cohort-2024/am-amm/assets/148800/f232780b-7af5-4d18-be7e-0cb4ee24e449">
 
 # TODO
 
