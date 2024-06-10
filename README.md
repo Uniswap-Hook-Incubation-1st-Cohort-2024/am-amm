@@ -8,6 +8,10 @@ Miro: [Miro board](https://miro.com/app/board/uXjVKDNc1nI=/)
 
 Slides: https://gamma.app/docs/Introduction-to-Auction-Managed-Automated-Market-Makers-am-AMMs--3t88pi5q43qzgs6?mode=doc
 
+# Flows
+
+<img width="1275" alt="image" src="https://github.com/Uniswap-Hook-Incubation-1st-Cohort-2024/am-amm/assets/148800/f830e3fe-101f-4792-a5e9-baafdb62ef71">
+
 # TODO
 
 - [x] Convert topBid, nextBid just to use Epochs
