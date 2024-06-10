@@ -204,17 +204,6 @@ contract AMAMMHOOKTest is Test, Deployers {
         uint256 lpTokenBefore = bidToken.balanceOf(address(this));
         console.log("LP Token before: ", lpTokenBefore);
 
-        vm.expectRevert();
-        modifyLiquidityRouter.modifyLiquidity(
-            key,
-            REMOVE_LIQUIDITY_PARAMS,
-            abi.encode(address(this)),
-            false,
-            false
-        );
-
-        hook.addToWithdrawalQueue(POOL_1, REMOVE_LIQUIDITY_PARAMS.liquidityDelta);
-
         modifyLiquidityRouter.modifyLiquidity(
             key,
             REMOVE_LIQUIDITY_PARAMS,
@@ -226,6 +215,49 @@ contract AMAMMHOOKTest is Test, Deployers {
         console.log("LP Token After swap: ", lpTokenAfter);
         assertEq(
             lpTokenBefore - uint(-REMOVE_LIQUIDITY_PARAMS.liquidityDelta),
+            lpTokenAfter,
+            "LP token is burnt after remove liquidity"
+        );
+    }
+
+    function test_removeLiquidity_when_manager() public {
+        // amAmm.bidToken().approve(address(amAmm), K * 100e18);
+        hook.bidToken().approve(hookAddress, K * 100e18);
+        // amAmm.bidToken().approve(address(hook), K * 100e18);
+
+        UniswapV4ERC20 bidToken = UniswapV4ERC20(hook.getPoolInfo(POOL_1).liquidityToken);
+        uint256 lpTokenBefore = bidToken.balanceOf(address(this));
+        console.log("LP Token before: ", lpTokenBefore);
+
+        uint128 rent = 1;
+        hook.bid(POOL_1, _swapFeeToPayload(123), rent, 1);
+
+        skip(10800); //Enter Epoch 3
+
+        vm.expectRevert();
+        // should revert when there's manager and didn't add into withdrawal queue
+        IPoolManager.ModifyLiquidityParams memory REMOVE_PORTION_LIQUIDITY_PARAMS =
+        IPoolManager.ModifyLiquidityParams({tickLower: -120, tickUpper: 120, liquidityDelta: -1e9, salt: 0});
+        modifyLiquidityRouter.modifyLiquidity(
+            key,
+            REMOVE_PORTION_LIQUIDITY_PARAMS,
+            abi.encode(address(this)),
+            false,
+            false
+        );
+
+        hook.addToWithdrawalQueue(POOL_1, REMOVE_PORTION_LIQUIDITY_PARAMS.liquidityDelta);
+        modifyLiquidityRouter.modifyLiquidity(
+            key,
+            REMOVE_PORTION_LIQUIDITY_PARAMS,
+            abi.encode(address(this)),
+            false,
+            false
+        );
+        uint lpTokenAfter = bidToken.balanceOf(address(this));
+        console.log("LP Token After swap: ", lpTokenAfter);
+        assertEq(
+            lpTokenBefore - uint(rent * K) + uint(-REMOVE_PORTION_LIQUIDITY_PARAMS.liquidityDelta),
             lpTokenAfter,
             "LP token is burnt after remove liquidity"
         );

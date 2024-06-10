@@ -134,17 +134,24 @@ contract AMAMMHOOK is BaseHook, AMAMM {
         address payer = abi.decode(hookData, (address));
         console.log("payer: ", payer);
 
+        uint40 currentEpoch = _getEpoch(poolId, block.timestamp);
+        IAmAmm.Bid memory _bid = getLastManager(poolId, currentEpoch);
+        uint128 rent = _bid.rent;
+
         int liquidity = params.liquidityDelta;
         console.log("liquidity: ");
         console.logInt(liquidity);
         int withdrawLiquidityDelta = withdrawalQueue[poolId][payer];
 
-        // burn LP token
-        if(withdrawLiquidityDelta == liquidity) {
-            UniswapV4ERC20(pool.liquidityToken).burn(payer, uint(-liquidity));
-        }else{
+        // delay withdrwal when there's manager
+        console.log("rent: ", rent);
+        console.log("withdrawLiquidityDelta: ");
+        console.logInt(withdrawLiquidityDelta);
+        if(rent > 0 && withdrawLiquidityDelta != liquidity){
             revert LiquidityNotInWithdrwalQueue();
         }
+        // burn LP token
+        UniswapV4ERC20(pool.liquidityToken).burn(payer, uint(-liquidity));
 
         return (this.beforeRemoveLiquidity.selector);
     }
