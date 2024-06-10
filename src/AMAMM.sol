@@ -43,15 +43,15 @@ contract AMAMM is IAmAmm {
     /// Constants
     /// -----------------------------------------------------------------------
 
-    function K(PoolId) public view returns (uint40) {
+    function K(PoolId) public pure returns (uint40) {
         return 24;
     }
 
-    function EPOCH_SIZE(PoolId) public view returns (uint256) {
+    function EPOCH_SIZE(PoolId) public pure returns (uint256) {
         return 1 hours;
     }
 
-    function MIN_BID_MULTIPLIER(PoolId) public view returns (uint256) {
+    function MIN_BID_MULTIPLIER(PoolId) public pure returns (uint256) {
         return 1.1e18;
     }
 
@@ -60,7 +60,6 @@ contract AMAMM is IAmAmm {
     /// -----------------------------------------------------------------------
 
     mapping(PoolId id => bool) public enabled;
-    mapping(PoolId id => address) internal _bidToken;
     mapping(PoolId id => uint40) internal _lastUpdatedEpoch;
     mapping(address deposits => uint256) public _userBalance;
     mapping(PoolId id => mapping(uint40 => Bid)) public poolEpochManager;
@@ -177,8 +176,6 @@ contract AMAMM is IAmAmm {
 
     /// @dev Transfers bid tokens from an address that's not address(this) to address(this)
     function _pullBidToken(PoolId, address from, uint256 amount) internal {
-        console.log("bidToken: ", address(bidToken));
-        console.log("from: ", from);
         bidToken.transferFrom(from, address(this), amount);
     }
 
