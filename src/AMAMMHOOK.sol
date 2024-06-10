@@ -23,6 +23,7 @@ import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/interfaces/IERC20Metadata.sol";
 import {StateLibrary} from "v4-core/libraries/StateLibrary.sol";
 import {AMAMM} from "./AMAMM.sol";
+import {LibMulticaller} from "../lib/multicaller/src/LibMulticaller.sol";
 
 contract AMAMMHOOK is BaseHook, AMAMM {
     using SafeCast for uint256;
@@ -30,10 +31,9 @@ contract AMAMMHOOK is BaseHook, AMAMM {
     using LPFeeLibrary for uint24;
     using StateLibrary for IPoolManager;
     
-    uint16 internal constant MINIMUM_LIQUIDITY = 1000;
-
     error MustUseDynamicFee();
     error LiquidityDoesntMeetMinimum();
+    error LiquidityNotInWithdrwalQueue();
 
     struct PoolInfo {
         bool hasAccruedFees;
@@ -41,8 +41,10 @@ contract AMAMMHOOK is BaseHook, AMAMM {
     }
 
     uint128 public constant TOTAL_BIPS = 10000;
+    uint128 public constant WITHDRAWAL_FEE_RATIO = 100;
     mapping(PoolId => PoolInfo) public poolInfo;
     mapping(PoolId id => uint40) internal _lastChargedEpoch;
+    mapping(PoolId id => mapping(address => int)) public withdrawalQueue;
 
     constructor(IPoolManager poolManager)
         BaseHook(poolManager)
@@ -54,8 +56,8 @@ contract AMAMMHOOK is BaseHook, AMAMM {
             afterInitialize: false,
             beforeAddLiquidity: false,
             afterAddLiquidity: true,
-            beforeRemoveLiquidity: false,
-            afterRemoveLiquidity: true,
+            beforeRemoveLiquidity: true, // charge withdrawal fee
+            afterRemoveLiquidity: false,
             beforeSwap: true,
             afterSwap: true, // Override how swaps are done
             beforeDonate: false,
@@ -121,29 +123,31 @@ contract AMAMMHOOK is BaseHook, AMAMM {
         return (this.afterAddLiquidity.selector, BalanceDeltaLibrary.ZERO_DELTA);
     }
 
-    function afterRemoveLiquidity(
-        address sender,
+    function beforeRemoveLiquidity(
+        address,
         PoolKey calldata key,
         IPoolManager.ModifyLiquidityParams calldata params,
-        BalanceDelta,
         bytes calldata hookData
-    ) external override poolManagerOnly returns (bytes4, BalanceDelta) {
+    ) external override returns (bytes4) {
         PoolId poolId = key.toId();
-
+        PoolInfo storage pool = poolInfo[poolId];
         address payer = abi.decode(hookData, (address));
         console.log("payer: ", payer);
-        UniswapV4ERC20 erc20 = UniswapV4ERC20(poolInfo[poolId].liquidityToken);
 
-        uint128 liquidity = poolManager.getPosition(
-            key.toId(), address(this), params.tickLower, params.tickUpper, params.salt
-        ).liquidity;
+        int liquidity = params.liquidityDelta;
+        console.log("liquidity: ");
+        console.logInt(liquidity);
+        int withdrawLiquidityDelta = withdrawalQueue[poolId][payer];
 
-        PoolInfo storage pool = poolInfo[poolId];
-        UniswapV4ERC20(pool.liquidityToken).burn(payer, uint(liquidity));
+        // burn LP token
+        if(withdrawLiquidityDelta == liquidity) {
+            UniswapV4ERC20(pool.liquidityToken).burn(payer, uint(-liquidity));
+        }else{
+            revert LiquidityNotInWithdrwalQueue();
+        }
 
-        return (this.afterRemoveLiquidity.selector, BalanceDeltaLibrary.ZERO_DELTA);
+        return (this.beforeRemoveLiquidity.selector);
     }
-
 
     function beforeSwap(address sender, PoolKey calldata key, IPoolManager.SwapParams calldata, bytes calldata)
         external
@@ -205,6 +209,11 @@ contract AMAMMHOOK is BaseHook, AMAMM {
 
     function getPoolInfo(PoolId poolId) external view returns (PoolInfo memory) {
         return poolInfo[poolId];
+    }
+
+    function addToWithdrawalQueue(PoolId poolId, int liquidity) external {
+        address msgSender = LibMulticaller.senderOrSigner();
+        withdrawalQueue[poolId][msgSender] = liquidity;
     }
 
     /// -----------------------------------------------------------------------
