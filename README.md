@@ -12,6 +12,10 @@ Slides: https://gamma.app/docs/Introduction-to-Auction-Managed-Automated-Market-
 
 <img width="1275" alt="image" src="https://github.com/Uniswap-Hook-Incubation-1st-Cohort-2024/am-amm/assets/148800/f830e3fe-101f-4792-a5e9-baafdb62ef71">
 
+# Tests
+
+![Uploading image.png…]()
+
 # TODO
 
 - [x] Convert topBid, nextBid just to use Epochs
