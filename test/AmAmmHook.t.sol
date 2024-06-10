@@ -34,15 +34,15 @@ contract AMAMMHOOKTest is Test, Deployers {
     uint128 internal constant K = 24; // 24 windows (hours)
     uint256 internal constant EPOCH_SIZE = 1 hours;
     address internal constant hookAddress = address(
-        uint160(
-            Hooks.BEFORE_INITIALIZE_FLAG |
+            uint160(
+                Hooks.BEFORE_INITIALIZE_FLAG |
                 Hooks.AFTER_SWAP_FLAG |
                 Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG |
                 Hooks.AFTER_ADD_LIQUIDITY_FLAG |
-                Hooks.AFTER_REMOVE_LIQUIDITY_FLAG |
+                Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG |
                 Hooks.BEFORE_SWAP_FLAG
-        )
-    );
+            )
+        );
 
     function setUp() public {
         // Deploy hook
@@ -51,16 +51,6 @@ contract AMAMMHOOKTest is Test, Deployers {
         deployFreshManagerAndRouters();
         (currency0, currency1) = deployMintAndApprove2Currencies();
 
-        address hookAddress = address(
-            uint160(
-                Hooks.BEFORE_INITIALIZE_FLAG |
-                    Hooks.AFTER_SWAP_FLAG |
-                    Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG |
-                    Hooks.AFTER_ADD_LIQUIDITY_FLAG |
-                    Hooks.AFTER_REMOVE_LIQUIDITY_FLAG |
-                    Hooks.BEFORE_SWAP_FLAG
-            )
-        );
         deployCodeTo(
             "AMAMMHOOK.sol",
             abi.encode(manager),
@@ -196,6 +186,91 @@ contract AMAMMHOOKTest is Test, Deployers {
             lpTokenBefore + uint256(rent * K) - uint256(rent * 3), // 3 epochs of rent paid
             lpTokenAfter,
             "LP token is paid after swap"
+        );
+    }
+
+    function test_removeLiquidity() public {
+        // amAmm.bidToken().approve(address(amAmm), K * 100e18);
+        hook.bidToken().approve(hookAddress, K * 100e18);
+        // amAmm.bidToken().approve(address(hook), K * 100e18);
+
+        uint256 balanceBefore0 = currency0.balanceOf(address(this));
+        console.log("balanceBefore0: ", balanceBefore0);
+        uint256 balanceBefore1 = currency1.balanceOf(address(this));
+        console.log("balanceBefore1: ", balanceBefore1);
+        console.log("test address: ", address(this));
+
+        UniswapV4ERC20 bidToken = UniswapV4ERC20(hook.getPoolInfo(POOL_1).liquidityToken);
+        uint256 lpTokenBefore = bidToken.balanceOf(address(this));
+        console.log("LP Token before: ", lpTokenBefore);
+
+        modifyLiquidityRouter.modifyLiquidity(
+            key,
+            REMOVE_LIQUIDITY_PARAMS,
+            abi.encode(address(this)),
+            false,
+            false
+        );
+        uint lpTokenAfter = bidToken.balanceOf(address(this));
+        console.log("LP Token After swap: ", lpTokenAfter);
+        assertEq(
+            lpTokenBefore - uint(-REMOVE_LIQUIDITY_PARAMS.liquidityDelta),
+            lpTokenAfter,
+            "LP token is burnt after remove liquidity"
+        );
+    }
+
+    function test_removeLiquidity_when_manager() public {
+        // amAmm.bidToken().approve(address(amAmm), K * 100e18);
+        hook.bidToken().approve(hookAddress, K * 100e18);
+        // amAmm.bidToken().approve(address(hook), K * 100e18);
+
+        UniswapV4ERC20 bidToken = UniswapV4ERC20(hook.getPoolInfo(POOL_1).liquidityToken);
+        uint256 lpTokenBefore = bidToken.balanceOf(address(this));
+        console.log("LP Token before: ", lpTokenBefore);
+
+        uint128 rent = 1;
+        hook.bid(POOL_1, _swapFeeToPayload(123), rent, 1);
+
+        skip(10800); //Enter Epoch 3
+
+        vm.expectRevert();
+        // should revert when there's manager and didn't add into withdrawal queue
+        IPoolManager.ModifyLiquidityParams memory REMOVE_PORTION_LIQUIDITY_PARAMS =
+        IPoolManager.ModifyLiquidityParams({tickLower: -120, tickUpper: 120, liquidityDelta: -1e9, salt: 0});
+        modifyLiquidityRouter.modifyLiquidity(
+            key,
+            REMOVE_PORTION_LIQUIDITY_PARAMS,
+            abi.encode(address(this)),
+            false,
+            false
+        );
+
+        hook.addToWithdrawalQueue(POOL_1, REMOVE_PORTION_LIQUIDITY_PARAMS.liquidityDelta);
+        // Should fail as it's still the same epoch
+        vm.expectRevert();
+        modifyLiquidityRouter.modifyLiquidity(
+            key,
+            REMOVE_PORTION_LIQUIDITY_PARAMS,
+            abi.encode(address(this)),
+            false,
+            false
+        );
+
+        skip(3600); //Enter next epoch
+        modifyLiquidityRouter.modifyLiquidity(
+            key,
+            REMOVE_PORTION_LIQUIDITY_PARAMS,
+            abi.encode(address(this)),
+            false,
+            false
+        );
+        uint lpTokenAfter = bidToken.balanceOf(address(this));
+        console.log("LP Token After remove liquidity: ", lpTokenAfter);
+        assertEq(
+            lpTokenBefore - uint(rent * K) - uint(-REMOVE_PORTION_LIQUIDITY_PARAMS.liquidityDelta),
+            lpTokenAfter,
+            "LP token is burnt after remove liquidity"
         );
     }
 
