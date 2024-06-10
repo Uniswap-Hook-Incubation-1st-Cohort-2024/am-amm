@@ -255,9 +255,9 @@ contract AMAMMHOOKTest is Test, Deployers {
             false
         );
         uint lpTokenAfter = bidToken.balanceOf(address(this));
-        console.log("LP Token After swap: ", lpTokenAfter);
+        console.log("LP Token After remove liquidity: ", lpTokenAfter);
         assertEq(
-            lpTokenBefore - uint(rent * K) + uint(-REMOVE_PORTION_LIQUIDITY_PARAMS.liquidityDelta),
+            lpTokenBefore - uint(rent * K) - uint(-REMOVE_PORTION_LIQUIDITY_PARAMS.liquidityDelta),
             lpTokenAfter,
             "LP token is burnt after remove liquidity"
         );
