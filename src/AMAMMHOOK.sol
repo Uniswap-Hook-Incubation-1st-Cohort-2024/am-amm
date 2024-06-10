@@ -44,7 +44,7 @@ contract AMAMMHOOK is BaseHook, AMAMM {
     uint128 public constant WITHDRAWAL_FEE_RATIO = 100;
     mapping(PoolId => PoolInfo) public poolInfo;
     mapping(PoolId id => uint40) internal _lastChargedEpoch;
-    mapping(PoolId id => mapping(address => int)) public withdrawalQueue;
+    mapping(PoolId id => mapping(address => mapping(int => uint40))) public withdrawalQueue;
 
     constructor(IPoolManager poolManager)
         BaseHook(poolManager)
@@ -141,13 +141,13 @@ contract AMAMMHOOK is BaseHook, AMAMM {
         int liquidity = params.liquidityDelta;
         console.log("liquidity: ");
         console.logInt(liquidity);
-        int withdrawLiquidityDelta = withdrawalQueue[poolId][payer];
+        uint40 withdrawLiquidityEpoch = withdrawalQueue[poolId][payer][liquidity];
 
         // delay withdrwal when there's manager
         console.log("rent: ", rent);
-        console.log("withdrawLiquidityDelta: ");
-        console.logInt(withdrawLiquidityDelta);
-        if(rent > 0 && withdrawLiquidityDelta != liquidity){
+        console.log("withdrawLiquidityEpoch: ");
+        console.log(withdrawLiquidityEpoch);
+        if(rent > 0 && ( withdrawLiquidityEpoch == 0 || currentEpoch <= withdrawLiquidityEpoch )){
             revert LiquidityNotInWithdrwalQueue();
         }
         // burn LP token
@@ -220,7 +220,7 @@ contract AMAMMHOOK is BaseHook, AMAMM {
 
     function addToWithdrawalQueue(PoolId poolId, int liquidity) external {
         address msgSender = LibMulticaller.senderOrSigner();
-        withdrawalQueue[poolId][msgSender] = liquidity;
+        withdrawalQueue[poolId][msgSender][liquidity] = _getEpoch(poolId, block.timestamp);
     }
 
     /// -----------------------------------------------------------------------

@@ -247,6 +247,17 @@ contract AMAMMHOOKTest is Test, Deployers {
         );
 
         hook.addToWithdrawalQueue(POOL_1, REMOVE_PORTION_LIQUIDITY_PARAMS.liquidityDelta);
+        // Should fail as it's still the same epoch
+        vm.expectRevert();
+        modifyLiquidityRouter.modifyLiquidity(
+            key,
+            REMOVE_PORTION_LIQUIDITY_PARAMS,
+            abi.encode(address(this)),
+            false,
+            false
+        );
+
+        skip(3600); //Enter next epoch
         modifyLiquidityRouter.modifyLiquidity(
             key,
             REMOVE_PORTION_LIQUIDITY_PARAMS,
