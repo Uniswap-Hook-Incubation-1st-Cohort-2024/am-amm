@@ -6,6 +6,8 @@ Reference:
 
 Miro: [Miro board](https://miro.com/app/board/uXjVKDNc1nI=/)
 
+Slides: https://gamma.app/docs/Introduction-to-Auction-Managed-Automated-Market-Makers-am-AMMs--3t88pi5q43qzgs6?mode=doc
+
 # TODO
 
 - [x] Convert topBid, nextBid just to use Epochs
