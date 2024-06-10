@@ -17,6 +17,7 @@ import {LPFeeLibrary} from "v4-core/libraries/LPFeeLibrary.sol";
 import {AmAmmMock} from "./mocks/AmAmmMock.sol";
 import "./mocks/ERC20Mock.sol";
 import {UniswapV4ERC20} from "v4-periphery/libraries/UniswapV4ERC20.sol";
+import {IERC6909Claims} from "v4-core/interfaces/external/IERC6909Claims.sol";
 
 contract AMAMMHOOKTest is Test, Deployers {
     using PoolIdLibrary for PoolKey;
@@ -149,6 +150,8 @@ contract AMAMMHOOKTest is Test, Deployers {
         uint128 rent = 1;
         hook.bid(POOL_1, _swapFeeToPayload(123), rent, 1);
         
+        uint claimTokenBefore = IERC6909Claims(manager).balanceOf(address(this), currency1.toId());
+        console.log("claim Token Before swap: ", claimTokenBefore);
         uint256 lpTokenAfter = bidToken.balanceOf(hookAddress);
         console.log("LP Token After: ", lpTokenAfter);
         assertEq(
@@ -175,9 +178,9 @@ contract AMAMMHOOKTest is Test, Deployers {
         );
         assertEq(
             currency1.balanceOf(address(this)),
-            // balanceBefore1 + (998 - 12),
+            balanceBefore1 + (998 - 12),
             // TODO: Create a new case that winner and current swapper not the same user
-            balanceBefore1 + 998, // since the fee got sent to the winner which is the current user
+            // balanceBefore1 + 998, // since the fee got sent to the winner which is the current user
             "amount 1"
         );
         lpTokenAfter = bidToken.balanceOf(hookAddress);
@@ -186,6 +189,13 @@ contract AMAMMHOOKTest is Test, Deployers {
             lpTokenBefore + uint256(rent * K) - uint256(rent * 3), // 3 epochs of rent paid
             lpTokenAfter,
             "LP token is paid after swap"
+        );
+        uint claimTokenAfter = IERC6909Claims(manager).balanceOf(address(this), currency1.toId());
+        console.log("claim Token After swap: ", claimTokenAfter);
+        assertEq(
+            claimTokenBefore + 12,
+            claimTokenAfter,
+            "claim token is minted after swap"
         );
     }
 
