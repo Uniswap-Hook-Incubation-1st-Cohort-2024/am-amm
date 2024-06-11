@@ -267,6 +267,7 @@ contract AmAmmTest is Test {
         assertEq(amAmm._userBalance(user0), 0, "0 Balance after submitting failed bid");
     }
 
+    // Test withdraw
     function test_bid_withdraw() external {
         amAmm.bidToken().mint(address(user0), K * 100e18);
         amAmm.bidToken().mint(address(user1), K * 100e18);
