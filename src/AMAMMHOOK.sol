@@ -50,18 +50,18 @@ contract AMAMMHOOK is BaseHook, AMAMM {
 
     function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
-            beforeInitialize: true,
+            beforeInitialize: true,  // Allow to set up the pool
             afterInitialize: false,
             beforeAddLiquidity: false,
-            afterAddLiquidity: true,
-            beforeRemoveLiquidity: true, // charge withdrawal fee
+            afterAddLiquidity: true, // Allow mint LP token
+            beforeRemoveLiquidity: true, // Allow LP withdrawal delay and burning LP token
             afterRemoveLiquidity: false,
-            beforeSwap: true,
-            afterSwap: true, // Override how swaps are done
+            beforeSwap: true, // Allow set up of dynamic swap fee
+            afterSwap: true, // Allow redistribute fee and charge rent
             beforeDonate: false,
             afterDonate: false,
             beforeSwapReturnDelta: false,
-            afterSwapReturnDelta: true, // Allow afterSwap to return a custom delta
+            afterSwapReturnDelta: true, // Allow redistribute swap fee
             afterAddLiquidityReturnDelta: false,
             afterRemoveLiquidityReturnDelta: false
         });
@@ -178,8 +178,8 @@ contract AMAMMHOOK is BaseHook, AMAMM {
         address bidder = _bid.bidder;
         uint128 rent = _bid.rent;
         uint256 feeAmount = (uint128(swapAmount) * uint128(fee)) / TOTAL_BIPS;
-        // manager takes fee
-        poolManager.take(feeCurrency, bidder, feeAmount);
+        poolManager.mint(bidder, feeCurrency.toId(), feeAmount);
+        
         // LP charge rent
         if (rent > 0) {
             uint40 last = _lastChargedEpoch[poolId];
@@ -197,6 +197,7 @@ contract AMAMMHOOK is BaseHook, AMAMM {
             _lastChargedEpoch[poolId] = currentEpoch;
         }
         return (IHooks.afterSwap.selector, feeAmount.toInt128());
+        // return (IHooks.afterSwap.selector, 0);
     }
 
     function getPoolInfo(PoolId poolId) external view returns (PoolInfo memory) {
