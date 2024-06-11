@@ -16,7 +16,7 @@ Presentation Video: [Loom video](https://www.loom.com/share/e713c20906cb4656af67
 
 # Tests
 
-<img width="642" alt="Screenshot 2024-06-10 at 5 13 13 PM" src="https://github.com/Uniswap-Hook-Incubation-1st-Cohort-2024/am-amm/assets/47234753/b4ca2d8e-1012-47a9-a295-75689a37b5a6">
+<img width="642" alt="Screenshot 2024-06-10 at 5 13 54 PM" src="https://github.com/Uniswap-Hook-Incubation-1st-Cohort-2024/am-amm/assets/47234753/1fca5708-84e9-4789-8ac6-92873d40ab88">
 
 # TODO
 
