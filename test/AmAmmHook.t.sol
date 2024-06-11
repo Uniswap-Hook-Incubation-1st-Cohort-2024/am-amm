@@ -108,6 +108,7 @@ contract AMAMMHOOKTest is Test, Deployers {
         uint128 rent = 1;
         hook.bid(POOL_1, _swapFeeToPayload(123), rent, 1);
 
+        uint256 claimTokenBefore = IERC6909Claims(manager).balanceOf(address(this), currency1.toId());
         uint256 lpTokenAfter = bidToken.balanceOf(hookAddress);
         console.log("LP Token After: ", lpTokenAfter);
         assertEq(lpTokenBefore + uint256(rent * K), lpTokenAfter, "LP token is token after bid");
@@ -134,13 +135,9 @@ contract AMAMMHOOKTest is Test, Deployers {
             lpTokenAfter,
             "LP token is paid after swap"
         );
-        uint claimTokenAfter = IERC6909Claims(manager).balanceOf(address(this), currency1.toId());
+        uint256 claimTokenAfter = IERC6909Claims(manager).balanceOf(address(this), currency1.toId());
         console.log("claim Token After swap: ", claimTokenAfter);
-        assertEq(
-            claimTokenBefore + 12,
-            claimTokenAfter,
-            "claim token is minted after swap"
-        );
+        assertEq(claimTokenBefore + 12, claimTokenAfter, "claim token is minted after swap");
     }
 
     //Test Remove liquidity
@@ -311,4 +308,3 @@ contract AMAMMHOOKTest is Test, Deployers {
         return bytes7(bytes3(swapFee));
     }
 }
-
