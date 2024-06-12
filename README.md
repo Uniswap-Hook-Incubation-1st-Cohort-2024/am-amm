@@ -1,12 +1,16 @@
 # am-amm
-Paper: [AM-AMM](https://arxiv.org/abs/2403.03367)
+
+Entry: https://uniswap.atrium.academy/hackathons/hookathon-c1/projects/ae6965c8-8e5d-43f1-b74e-6bf63f2455d9/
 
 Reference:
-[Biddog](https://github.com/Bunniapp/biddog/tree/main)
+
+Paper: [AM-AMM](https://arxiv.org/abs/2403.03367)
+
+Biddog: [Biddog](https://github.com/Bunniapp/biddog/tree/main)
 
 Miro: [Miro board](https://miro.com/app/board/uXjVKDNc1nI=/)
 
-Slides: https://gamma.app/docs/Introduction-to-Auction-Managed-Automated-Market-Makers-am-AMMs--3t88pi5q43qzgs6?mode=doc
+Slides: [Gamma slides](https://gamma.app/docs/Introduction-to-Auction-Managed-Automated-Market-Makers-am-AMMs--3t88pi5q43qzgs6?mode=doc)
 
 Presentation Video: [Loom video](https://www.loom.com/share/e713c20906cb4656af67b2797d200fb1)
 
