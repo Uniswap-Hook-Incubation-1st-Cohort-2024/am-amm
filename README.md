@@ -1,6 +1,6 @@
 # am-amm
 
-Entry: https://uniswap.atrium.academy/hackathons/hookathon-c1/projects/ae6965c8-8e5d-43f1-b74e-6bf63f2455d9/
+Entry: [Uniswap Hook Hackathon](https://uniswap.atrium.academy/hackathons/hookathon-c1/projects/ae6965c8-8e5d-43f1-b74e-6bf63f2455d9/)
 
 Reference:
 
