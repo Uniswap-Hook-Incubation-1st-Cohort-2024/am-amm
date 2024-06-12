@@ -2,8 +2,6 @@
 
 Entry: [Uniswap Hook Incubator Hackathon](https://uniswap.atrium.academy/hackathons/hookathon-c1/projects/ae6965c8-8e5d-43f1-b74e-6bf63f2455d9/)
 
-Reference:
-
 Paper: [AM-AMM](https://arxiv.org/abs/2403.03367)
 
 Biddog: [Biddog](https://github.com/Bunniapp/biddog/tree/main)
