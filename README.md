@@ -12,6 +12,8 @@ Slides: [Gamma slides](https://gamma.app/docs/Introduction-to-Auction-Managed-Au
 
 Presentation Video: [Loom video](https://www.loom.com/share/e713c20906cb4656af67b2797d200fb1)
 
+X: https://x.com/AtriumAcademy/status/1803882301396521222
+
 # Flows
 
 <img width="1275" alt="image" src="https://github.com/Uniswap-Hook-Incubation-1st-Cohort-2024/am-amm/assets/148800/f830e3fe-101f-4792-a5e9-baafdb62ef71">
